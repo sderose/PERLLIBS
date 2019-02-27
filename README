@@ -1,0 +1,64 @@
+PERL libraries used by my other Perl code, or of general use. Always strict and -w. These tend to be older, I now work mainly in Python.
+
+sjdUtils.pm-- This underlies lots of stuff, and is almost entirely API-compatible
+with sjdUtil.py (in PYTHONLIBS).
+
+ColorManager.pm-- Gives easy access to ANSI terminal color
+
+DomExtensions.pm--
+
+ElementManager.pm--
+
+EntityManager.pm--
+
+Tokenizer.pm-- A pretty good NLP text tokenizer. Especially good at Unicode
+punctuation and normalization issues.
+
+XmlOutput.pm-- Utility for generating well-formed XML from programs.
+Straightforward methods like OpenElement(name, attrs), but maintains the
+stack of what's open, so it can close down to a given element by names, tell
+you how many of some element type are open, report if you try to close something
+not open, etc. It also handles text and attribute escaping. There is an
+almost-identical XmlOutput.py under PYTHONLIBS.
+
+XmlTuples.pm-- Support for XML files conforming to a tiny schema suitable for
+CSV-like data. Nice because (unlike CSV) you can see what all the fields are,
+and you can apply the whole XML suite of tools. Easy to get to/from CSV,
+using the TabularFormats package.
+
+alogging.pm-- a simple logging package that support *nix-style "-v" levels,
+automatic message indentation, color (see ColorManager.pm and .py), etc.
+
+cp1252.pm-- Quick access to information about Windows Code Page 1252, which
+is like Latin-1 except that it uses the C1 control characters (0x80 through 0x9F)
+as printables (mostly punctuation and accented Latin vowels). Note that Web
+servers often tell you they're giving you Unicode, when they actually are
+giving you cp1252.
+
+
+==Secondary
+
+ArgParse.pm-- Unfinished port of Python argparse.
+
+BibleBooks.pm--
+
+DataSource.pm--
+
+Datatypes.pm--
+
+DtdKnowledge.pm--
+
+GNU_General_Public_License_v3.0.txt--
+
+RecordFile.pm--
+
+SimplifyUnicode.pm--
+
+StatLog.pm--
+
+TFormatSupport.pm--
+
+TableSchema.pm--
+
+TabularFormats.pm--
+
