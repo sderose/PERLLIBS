@@ -661,7 +661,7 @@ sub nonWordTokens {
 
     $self->map("T_EMOTICON",  ":)");
     $self->map("T_HASHTAG",   "#nine");
-    $self->map("T_EMAIL",     "user@example.com");
+    $self->map("T_EMAIL",     "user\@example.com");
     $self->map("T_USER",      "\@nine");
     $self->map("T_URI",       "http://www.example.com");
 } # nonWordTokens
