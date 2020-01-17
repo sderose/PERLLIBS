@@ -4,112 +4,6 @@
 #
 # Provide varoius info about HTML (or other) element types.
 #
-# 2011-06-02: Written by Steven J. DeRose.
-# 2012-03-15: Integrate w/ XmlTuples.pm and tupleSets/DtdKnowledge.xsv.
-#     Generalize set/get to handle any properties at all.
-#
-# To do:
-#     Need this even exist given XmlTuples.pm does nearly all the work?
-#
-use strict;
-use XmlTuples;
-
-our $VERSION_DATE = "1.00";
-
-package DtdKnowledge;
-
-sub new {
-    my ($class, $infoPath) = @_;
-    if (!$infoPath) { $infoPath = ""; }
-    if (!-f $infoPath) {
-        warn "DtdKnowledge: Can't find XSV file '$infoPath'.\n";
-        return(undef);
-    }
-    my $self = {
-        version     => "2012-05-10",
-        theHash     => {},
-    };
-    
-    bless $self, $class;
-    $self->loadDTD($infoPath);
-    return($self);
-}
-
-sub setElementInfo {
-    my ($self, $name, $propName, $propValue) = @_;
-    $self->{theHash}->{$name}->{$propName} = $propValue;
-}
-
-sub getElementInfo {
-    my ($self, $name, $propName) = @_;
-    if (!defined $propName) {
-        return($self->{theHash}->{$name});
-    }
-    return($self->{theHash}->{$name}->{$propName});
-}
-
-sub loadDTD {
-    my ($self, $path) = @_;
-    if (!$path || !-r $path) {
-        return(undef);
-    }
-    my $xt = new XmlTuples();
-    ($xt) || die
-        "DtdKnowledge.pm:loadDTD: Can't create new XmlTuples.\n";
-    $xt->open($path) || die
-        "DtdKnowledge.pm:loadDTD: Can't open '$path'.\n";
-    $self->{theHash} = $xt->getAllAsHash("Name");
-    return(1);
-}
-
-sub getTheHash {
-    my ($self) = @_;
-    return($self->{theHash});
-}
-
-
-###############################################################################
-# Check for properties of an element type
-#
-sub isDefined {
-    my ($self, $name) = @_;
-    return((defined $self->{theHash}->{$name}) ? 1:0);
-}
-
-sub getDisplay {
-    my ($self, $name) = @_;
-    return($self->getElementInfo($name, "Display"));
-}
-
-sub getSubs {
-    my ($self, $name) = @_;
-    return($self->getElementInfo($name, "Subs"));
-}
-
-sub getContent {
-    my ($self, $name) = @_;
-    return($self->getElementInfo($name, "Content"));
-}
-
-sub getDescription {
-    my ($self, $name) = @_;
-    return($self->getElementInfo($name, "Descr"));
-}
-
-sub getPreSpace {
-    my ($self, $name) = @_;
-    return($self->getElementInfo($name, "Pre"));
-}
-
-sub getPostSpace {
-    my ($self, $name) = @_;
-    return($self->getElementInfo($name, "Post"));
-}
-
-
-
-###############################################################################
-###############################################################################
 ###############################################################################
 #
 
@@ -123,51 +17,66 @@ my $h = new DtdKnowledge("HTMLknowledge.xsv");
 Identifies various information about a given element type in a given
 DTD or schema.
 
-Information on a particular DTD is set up by loading XML Tuples files (cf):
+Information on a particular DTD can be set up by loading special XSV files,
+or (eventually) by loading a schema.
 
-=over
-
-=item * HTML
-
-=item * DocBook
-
-=item * NLM
-
-=item * TEI
-
-=back
-
+This is mainly intended to provide abstract info
+about the significance of the element, not mainly its syntax.
 
 
 =head2 Properties provided
 
+Boolean property values should be coded as 1 or 0.
+
 =over
 
-=item * Name -- the element name itself.
+=item * 'name': -- the element name itself.
 
-=item * Display -- a CSS display type.
+=item * 'display': -- a CSS display type, mainly 'block' or 'inline'.
 
-=item * Content -- what the element may contain: 
-document (it's the document element),
-mongo (lots of blocks), soup (lots of sub-elements, like a paragraph can have),
-textOnly, meta (contains code, stylesheets, metadata, etc), empty.
+=item * 'content': -- what the element may contain:
 
-=item * Subs -- any number of keyword, indicating features such as
- whether the tag is more semantic or format oriented:
-sem, fmt, link, form, tabular, head, list. Probably should add: language-shift,
-microformat.xxx, citation, image, media, 
+    *document (it's the document element)
+    *container (div, chapter, section, appendix, ToC, etc)
+    *soup (lots of sub-elements (paragraph, etc)
+    *textOnly (can only have text)
+    *code (block-level monospace, not just code per se)
+    *meta (TEI header, stylesheets, Dublin Core data, etc)
+    *empty (whether it should always be empty
+    *mixed (whether it can have mixed content)
 
-=item * Pre and Post -- preferred number of newlines to add before and after the
-element in pretty-printing.
+=item * 'categories': -- any number of whitespace-separated keywords.
+For example (with some illustrative cases from HTML or other schemas):
 
-=item * Description -- human readable documentation string for the element type.
+    * 'semantic' vs. 'format' (EM vs. I, DEL vs. STRIKE)
+    * 'link' (A, OBJECT)
+    * 'form' (FORM and all its components)
+    * 'tabular' (TABLE, THEAD, TR, TD)
+    * 'heading' (H3)
+    * 'list' (UL, OL, DL)
+    * 'verbatim' (XMP)
+    * 'media' (IMG, OBJECT)
+    * 'language-shift' (FOREIGN)
+    * 'label' (LABEL, TH; perhaps heading is really a subclass of this?)
+    * 'citation' (BibEntry, OSISRef, DC:Creator)
+    * 'wordbreak' (true if the tag entails a word boundary. Defaults to true
+for all block elements, but not for HTML inlines.
+
+=item * 'pre' -- preferred number of newlines to add before the
+element in pretty-printing. Should be zero or unspecified for inlines.
+
+=item * 'post' -- preferred number of newlines to add after the
+element in pretty-printing. Should be zero or unspecified for inlines.
+
+=item * 'description': -- human readable documentation string for the element type.
+
+=item * 'attributes': a list of permitted attribute names (this should add
+types and defaults, too).
+
+=item * 'model': The content model or other specification of what children
+are permitted.
 
 =back
-
-Could also add the content model, attlist, etc., but those are already
-available in typical schemas; this is meant to provide more abstract info
-about the significance of the element, not mainly its syntax.
-
 
 
 =head1 Methods
@@ -181,26 +90,25 @@ about the significance of the element, not mainly its syntax.
 =item * B<getTheHash>()
 
 Just return a reference to the entire hash of data used. It is keyed on
-element type name, and the values are all strings, with white-space-separated
-tokens for the types. Spacing is indicated (for example) as pre_4 post_3.
+element type name. The valueis a hash, keyed on property name.
 
-=item * B<setElementInfo>(I<elementType, info>)
+=item * B<setProp>(I<elementType, propName, propValue>)
 
-Set the element information for the element of type II<elementType>, to I<info>.
+Set a piece of element information for the element of type II<elementType>, to I<info>.
 The information should include a dispay type, any applicable keywords,
 and perhaps pre_N and/or post_N spacing information. Custom keywords can
-also be used; keywords should be separated by word boundaries (generally
-whitespace), and should not contain non-word characters.
+also be used.
 
-=item * B<getElementInfo>(I<elementType>)
+=item * B<getProp>(I<elementType, propName>)
 
-Look up and return the information associated with the element.
-(presently a string, to become a hash).
+Look up and return some information associated with the element.
 
 =item * B<isDefined>(I<elementType>)
 
-Returns true iff the active DTD defines an element type named I<elementType>.
+Returns true iff the active schema defines an element type named I<elementType>.
 
+
+=for nobody ===================================================================
 
 =item * B<getDisplayType>(I<elementType>)
 
@@ -216,12 +124,14 @@ most of which have to do with more "semantic" issues:
 =item * empty
 
 Identifies syntactically empty elements, which do not take an end-tag in HTML
-or SGML, and may use a special tag syntax in XML and XHTML.
+or SGML, and may use a special tag syntax in XML, XHTML, and by convention in HTML.
 
-=item * sem
+=item * category
 
 Identifies element types that give particularly "semantic" information.
-For example, abbr, acrony, em (not i). 
+For example, abbr, acrony, em (not i).
+
+=over
 
 =item * fmt
 
@@ -267,12 +177,13 @@ for inlines or unknown names, otherwise 1.
 =back
 
 
-
-=head1 Related files
+=head1 Related files and information
 
 C<tupleData/XXXKnowledge.xsv> -- information for DTD "XXX",
-as XML Tuples.
+as XSV.
 
+See also the Microsoft "Schema Object Model", which has some similar features
+to this: https://docs.microsoft.com/en-us/dotnet/standard/data/xml/xml-schema-object-model-overview.
 
 
 =head1 Known bugs and limitations
@@ -280,7 +191,7 @@ as XML Tuples.
 The set of categories is useful but far from definitive; it's also kind
 of fuzzy. Some additional information that might be useful:
 
-implies-word-break (redundant with non-inline?); 
+implies-word-break (redundant with non-inline?);
 out-of-line-content (footnote),
 non-content-content (del),
 is-milestone (start, mid, end, joiner,....),
@@ -291,15 +202,153 @@ rank-group (h)
 information re. attributes: is-id, is-uri, inherits, is-accessibility-alt
 
 
-
 =head1 Ownership
 
-This work by Steven J. DeRose is licensed under a Creative Commons 
+This work by Steven J. DeRose is licensed under a Creative Commons
 Attribution-Share Alike 3.0 Unported License. For further information on
 this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
 
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+For the most recent version, see L<http://www.derose.net/steve/utilities/> or
+L<http://github.com/sderose>.
+
+
+=head1 History
+
+* 2011-06-02: Written by Steven J. DeRose.
+* 2012-03-15: Integrate w/ XmlTuples.pm and tupleSets/DtdKnowledge.xsv.
+Generalize set/get to handle any properties at all.
+* 2019-12-24: Update to fit better with DomExtensions.py, etc. Clean up
+old usage of packed strings. Pin down properties better.
+
+=head1 To do
+
+Need this even exist given XSV does nearly all the work?
 
 =cut
+
+use strict;
+use XmlTuples;
+
+our $VERSION_DATE = "1.00";
+
+package DtdKnowledge;
+
+sub new {
+    my ($class, $DTDPath) = @_;
+    if (!$infoPath) { $infoPath = ""; }
+    if (!-f $infoPath) {
+        warn "DtdKnowledge: Can't find XSV file '$infoPath'.\n";
+        return(undef);
+    }
+    my $self = {
+        version     => "2012-05-10",
+        theHash     => {},
+    };
+
+    bless $self, $class;
+    if ($DTDPath) { $self->loadDTD($infoPath); }
+    return($self);
+}
+
+sub setProp {
+    my ($self, $elementType, $propName, $propValue) = @_;
+    $self->{theHash}->{$elementType}->{$propName} = $propValue;
+}
+
+sub getProp {
+    my ($self, $elementType, $propName) = @_;
+    if (!defined $propName) {
+        return($self->{theHash}->{$elementType});
+    }
+    return($self->{theHash}->{$elementType}->{$propName});
+}
+
+sub loadFromDTD {
+    my ($self, $path) = @_;
+    if (!$path || !-r $path) {
+        return(undef);
+    }
+    my $xt = new XmlTuples();
+    ($xt) || die
+        "DtdKnowledge.pm:loadDTD: Can't create new XmlTuples.\n";
+    $xt->open($path) || die
+        "DtdKnowledge.pm:loadDTD: Can't open '$path'.\n";
+    $self->{theHash} = $xt->getAllAsHash("Name");
+    return(1);
+}
+
+sub loadFromXSD {
+    my ($self, $path) = @_;
+    if (!$path || !-r $path) {
+        return(undef);
+    }
+    my $xt = new XmlTuples();
+    ($xt) || die
+        "DtdKnowledge.pm:loadDTD: Can't create new XmlTuples.\n";
+    $xt->open($path) || die
+        "DtdKnowledge.pm:loadDTD: Can't open '$path'.\n";
+    $self->{theHash} = $xt->getAllAsHash("Name");
+    return(1);
+}
+
+sub loadFromXSD {
+    my ($self, $path) = @_;
+    if (!$path || !-r $path) {
+        return(undef);
+    }
+    my $xt = new XmlTuples();
+    ($xt) || die
+        "DtdKnowledge.pm:loadDTD: Can't create new XmlTuples.\n";
+    $xt->open($path) || die
+        "DtdKnowledge.pm:loadDTD: Can't open '$path'.\n";
+    $self->{theHash} = $xt->getAllAsHash("Name");
+    return(1);
+}
+
+
+sub getTheHash {
+    my ($self) = @_;
+    return($self->{theHash});
+}
+
+
+###############################################################################
+# Check for properties of an element type
+#
+sub isDefined {
+    my ($self, $name) = @_;
+    return((defined $self->{theHash}->{$name}) ? 1:0);
+}
+
+sub getDisplay {
+    my ($self, $name) = @_;
+    return($self->getProp($name, "Display"));
+}
+
+sub getSubs {
+    my ($self, $name) = @_;
+    return($self->getProp($name, "Subs"));
+}
+
+sub getContent {
+    my ($self, $name) = @_;
+    return($self->getProp($name, "Content"));
+}
+
+sub getDescription {
+    my ($self, $name) = @_;
+    return($self->getProp($name, "Descr"));
+}
+
+sub getPreSpace {
+    my ($self, $name) = @_;
+    return($self->getProp($name, "Pre"));
+}
+
+sub getPostSpace {
+    my ($self, $name) = @_;
+    return($self->getProp($name, "Post"));
+}
+
 
 1;

@@ -91,7 +91,7 @@ my %logInfo = (
 );
 
 my %logOptions = (
-    'verboseSet'      => 0,      # Has setVerbose() been called??
+    'verboseSet'      => 0,      # Has setLogVerbose() been called??
     'verbose'         => 0,      # Verbosity level
     'stdout'          => 0,      # Messages to STDOUT instead of STDERR?
     'TEEFILE'         => undef,  # Copy of messages goes here
@@ -509,7 +509,7 @@ of a counter to increment (counters can also be modified directly). This is
 an easy way to keep stats on what things happen (and then counters still get
 incremented even if the trace-level prevents a message from displaying).
 
-B<Note>: Unless you call I<setLogColors(1)> and I<setVerbose(n)>, you might
+B<Note>: Unless you call I<setLogColors(1)> and I<setLogVerbose(n)>, you might
 not get the output you want. But if you do, ColorManager provides pretty nice
 color features.
 
@@ -676,7 +676,7 @@ I<colorizeXmlTags>() and  I<colorizeXmlContent>(). Default: C<blue>.
 =item * B<eMsg>I<(rank, message1, message2)> or B<eWarn>
 
 Issue an error message if the current verbosity-level is high enough
-(that is, it is at least as great as abs(I<rank>)). See I<setVerbose>.
+(that is, it is at least as great as abs(I<rank>)). See I<setLogVerbose>.
 See I<defineMsgType> for the default color (used for I<message1> only),
 number of stack trace levels, and other settings, and for how to change them.
 If I<rank> is negative, the program is terminated.
@@ -684,14 +684,14 @@ If I<rank> is negative, the program is terminated.
 =item * B<hMsg>I<(rank, message1, message2)> or B<hWarn>
 
 Issues a heading message if the current verbosity-level is high enough
-(greater than abs(I<rank>)). See I<setVerbose>.
+(greater than abs(I<rank>)). See I<setLogVerbose>.
 The message gets a blank line above it and some "*" in front.
 I<message1> will be in the color for message type C<h> (see I<defineMsgType>),
 but I<message2> will not be colorized.
 
 =item * B<vMsg>I<(rank, message1, message2)> or B<vMsg>
 Issue an informational message if the current setting for
-I<verbose> is greater than I<rank>. See I<setVerbose>.
+I<verbose> is greater than I<rank>. See I<setLogVerbose>.
 I<message1> will be in the color for message type C<v> (see I<defineMsgType>),
 but I<message2> will not be colorized.
 A newline is added after I<message2>.

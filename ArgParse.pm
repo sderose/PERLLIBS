@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/perl -w
 #
 # Perl version of the Python 'argparse' package. But, it sits on top
 # of Perl Getopt::Long, rather than rebuilding from scratch.
@@ -6,7 +6,7 @@
 # Written 2012 by Steven J. DeRose, based on standard Python package.
 # 2013-02-01 sjd: Packagize. Define actionValues and typeValues hashes.
 #     Add Perldoc. Add types rfile/wfile/zfile/dir.
-# 
+#
 # To do:
 #     Finish.
 #     Stop adding add_argument hash *values* as keys in option list!
@@ -30,7 +30,7 @@ package ArgParse;
 #
 my %optionNames = (
     # name or flags
-    "action"  => 1,  # Enum below 
+    "action"  => 1,  # Enum below
     "choices" => 1,   # array
     "const"   => 1,  # (any)
     "default" => 1,  # (any)
@@ -39,7 +39,7 @@ my %optionNames = (
     "metavar" => 1,  # token
     "nargs"   => 1,  # int | [*?+] | argparse.REMAINDER
     "required"=> 1,  # bool
-    "type"    => 1,  # Enum below 
+    "type"    => 1,  # Enum below
     "version" => 1,  # string
     );
 
@@ -176,18 +176,18 @@ sub makeGetoptForm {
         warn "add_argument: Unknown action '$action' for option '$primaryName'.\n";
         return(undef);
     }
-    if    ($action eq "store")         { 
+    if    ($action eq "store")         {
         $gohValue = ($type eq "file") ?
             sub { $$dest = $_[1]; } :
             sub { $$dest = $_[1]; (-f $_[1]) || die "No file '$_[1]}'\n"; }
     }
-    elsif ($action eq "store_true")    { 
+    elsif ($action eq "store_true")    {
         $gohValue = sub { $$dest = 1; };
     }
-    elsif ($action eq "store_false")   { 
+    elsif ($action eq "store_false")   {
         $gohValue = sub { $$dest = 0; };
     }
-    elsif ($action eq "store_const")   { 
+    elsif ($action eq "store_const")   {
         $gohValue = sub { $$dest = $const; };
     }
     elsif ($action eq "append")        {
@@ -195,20 +195,20 @@ sub makeGetoptForm {
             sub { push @$dest, $_[1]; } :
             sub { push @$dest, $_[1]; (-f $_[1]) || die "No file '$_[1]}'\n"; }
     }
-    elsif ($action eq "append_const")  { 
+    elsif ($action eq "append_const")  {
         $gohValue = sub { push @$dest, $const; };
     }
     elsif ($action eq "count")         {
         $gohTypeKey .= "+";
     }
-    elsif ($action eq "help")          { 
+    elsif ($action eq "help")          {
         $gohValue = sub {
-            system "perldoc $0"; 
+            system "perldoc $0";
             print_help();
             exit;
         };
     }
-    elsif ($action eq "version")       { 
+    elsif ($action eq "version")       {
         $gohValue = sub { print "$0, version $VERSION_DATE.\n"; exit; };
     }
     else {
@@ -459,7 +459,7 @@ The Python value "argparse.SUPPRESS" is not supported.
 
 
 =item B<type> -- Enum (see below)
-Default: bool. 
+Default: bool.
 
 The type to which the command-line argument should be converted, from:
 
@@ -473,7 +473,7 @@ to turn the argument off instead of on.
 
 =item * I<int> An decimal integer value.
 
-=item * I<baseint> Like I<int>, but the value 
+=item * I<baseint> Like I<int>, but the value
 must be non-negative, and can be specified in
 decimal, octal, or hexadecimal.
 
@@ -548,7 +548,7 @@ this package leaves trailing items available via @ARGV.
 
 =head1 Ownership
 
-This work by Steven J. DeRose is licensed under a Creative Commons 
+This work by Steven J. DeRose is licensed under a Creative Commons
 Attribution-Share Alike 3.0 Unported License. For further information on
 this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
 
