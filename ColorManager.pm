@@ -1,36 +1,19 @@
 #!/usr/bin/perl -w
 #
 # ColorManager: Unified handling of ANSI color.
-
-# Began as part of sjdUtils:
-# 2011-03-25: Pulled out from various scripts.
-# 2011-05-12 sjd: Use defaultColor in hWarn().
-# 2016-07-21: Logically separate ColorManager package.
-#     Sync color w/ python, logging....
-# 2016-10-25: Physically separate ColorManager package.
-# 2019-11-16: Improve driver. strict.
-#
-# To do:
-#     Block 'blink' effect if env var NOBLINK is set.
-#     Sync ColorManager API with Python version.
-#     Get rid of rest of refs to %colorStrings. Maybe create escapes on the
-#         fly from tokens rather than keeping a big list at all.
-#     Remove 256-color stuff?
-#     Finish different color-sets for dark vs. light bg.
-#     Sync with Python version.
 #
 use strict;
 
 package ColorManager;
 
 our %metadata = (
-    'title'        => ".pm",
+    'title'        => "ColorManager.pm",
     'rightsHolder' => "Steven J. DeRose",
     'creator'      => "http://viaf.org/viaf/50334488",
     'type'         => "http://purl.org/dc/dcmitype/Software",
     'language'     => "Perl 5.18",
     'created'      => "2011-03-25",
-    'modified'     => "2019-11-16",
+    'modified'     => "2020-02-18",
     'publisher'    => "http://github.com/sderose",
     'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
 );
@@ -199,12 +182,51 @@ C<colorConvert.py> -- convert string representatins of colors (RGB, etc.).
 
 C<uncolorize> -- remove ANSI color escape from STDIN.<
 
+=head1 History
 
-=head1 Ownership
+=over
 
-This work by Steven J. DeRose is licensed under a Creative Commons
+=item * Began as part of sjdUtils.
+
+=item * 2011-03-25: Pulled out from various scripts.
+
+=item * 2011-05-12: Use defaultColor in hWarn().
+
+=item * 2016-07-21: Logically separate ColorManager package.
+Sync color w/ python, logging....
+
+=item * 2016-10-25: Physically separate ColorManager package.
+
+=item * 2019-11-16: Improve driver. strict.
+
+=item * 2020-02-18 Clean up.
+
+=back
+
+=head1 To do
+
+=over
+
+=item * Block 'blink' effect if env var NOBLINK is set.
+
+=item * Sync ColorManager API with Python version.
+
+=item * Get rid of rest of refs to %colorStrings. Maybe create escapes on the
+fly from tokens rather than keeping a big list at all.
+
+=item * Remove 256-color stuff?
+
+=item * Finish different color-sets for dark vs. light bg.
+
+=item * Sync with Python version.
+
+=back
+
+=head1 Rights
+
+Copyright 2011 by Steven J. DeRose. This work is licensed under a Creative Commons
 Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<here|"http://creativecommons.org/licenses/by-sa/3.0/">.
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0>.
 
 For the most recent version, see L<here|"http://www.derose.net/steve/utilities/"> or
 L<https://github.com/sderose>.

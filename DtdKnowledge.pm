@@ -11,6 +11,8 @@
 
 =head1 Usage
 
+*** UNFINISHED ***
+
 use DtdKnowledge;
 my $h = new DtdKnowledge("HTMLknowledge.xsv");
 
@@ -233,6 +235,8 @@ our $VERSION_DATE = "1.00";
 
 package DtdKnowledge;
 
+my $infoPath = "";
+
 sub new {
     my ($class, $DTDPath) = @_;
     if (!$infoPath) { $infoPath = ""; }
@@ -290,21 +294,6 @@ sub loadFromXSD {
     $self->{theHash} = $xt->getAllAsHash("Name");
     return(1);
 }
-
-sub loadFromXSD {
-    my ($self, $path) = @_;
-    if (!$path || !-r $path) {
-        return(undef);
-    }
-    my $xt = new XmlTuples();
-    ($xt) || die
-        "DtdKnowledge.pm:loadDTD: Can't create new XmlTuples.\n";
-    $xt->open($path) || die
-        "DtdKnowledge.pm:loadDTD: Can't open '$path'.\n";
-    $self->{theHash} = $xt->getAllAsHash("Name");
-    return(1);
-}
-
 
 sub getTheHash {
     my ($self) = @_;
