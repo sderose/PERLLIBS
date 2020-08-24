@@ -104,7 +104,7 @@ sub selectAncestor {
     my ($self,$n,$type,$aname,$avalue) = @_;
     if (!defined $type) { $type = ""; }
     if (!defined $n) { $n = 1; }
-    while($self=getParentNode($self)) {
+    while ($self=getParentNode($self)) {
         if (nodeMatches($self,$type,$aname,$avalue)) {
             $n--;
             if ($n<=0) { return($self); }
@@ -120,7 +120,7 @@ sub selectChild {
     if (!defined $type) { $type = ""; }
     if (!defined $n) { $n = 1; }
     $self = $self->getFirstChild();
-    while(defined $self) {
+    while (defined $self) {
         if (nodeMatches($self,$type,$aname,$avalue)) {
             $n--;
             if ($n<=0) { return($self); }
@@ -158,7 +158,7 @@ sub selectPreceding {
     my ($self,$n,$type,$aname,$avalue) = @_;
     if (!defined $n) { $n = 1; }
     if (!defined $type) { $type = ""; }
-    while($self=getPreceding($self)) {
+    while ($self=getPreceding($self)) {
         if (nodeMatches($self,$type,$aname,$avalue)) {
             $n--;
             if ($n<=0) { return($self); }
@@ -170,7 +170,7 @@ sub getPreceding {
     my ($self) = @_;
     my $node = $self->getPreviousSibling();
     if (defined $node) {
-        while(my $next = $node->getFirstChild()) {
+        while (my $next = $node->getFirstChild()) {
             $node = $next;
         }
         return($node);
@@ -182,7 +182,7 @@ sub selectFollowing {
     my ($self,$n,$type,$aname,$avalue) = @_;
     if (!defined $n) { $n = 1; }
     if (!defined $type) { $type = ""; }
-    while($self=getFollowing($self)) {
+    while ($self=getFollowing($self)) {
         if (nodeMatches($self,$type,$aname,$avalue)) {
             $n--;
             if ($n<=0) { return($self); }
@@ -206,7 +206,7 @@ sub selectPrecedingSibling {
     my ($self,$n,$type,$aname,$avalue) = @_;
     if (!defined $type) { $type = ""; }
     if (!defined $n) { $n = 1; }
-    while($self = $self->getPreviousSibling()) {
+    while ($self = $self->getPreviousSibling()) {
         if (nodeMatches($self,$type,$aname,$avalue)) {
             $n--;
             if ($n<=0) { return($self); }
@@ -223,7 +223,7 @@ sub selectFollowingSibling {
     my ($self,$n,$type,$aname,$avalue) = @_;
     if (!defined $type) { $type = ""; }
     if (!defined $n) { $n = 1; }
-    while($self=getNextSibling($self)) {
+    while ($self=getNextSibling($self)) {
         if (nodeMatches($self,$type,$aname,$avalue)) {
             $n--;
             if ($n<=0) { return($self); }
@@ -244,7 +244,7 @@ sub getFollowingSibling {
 sub getLeftBranch {
     my ($self) = @_;
     (defined $self) || return(undef);
-    while(my $fc = $self->getFirstChild()) {
+    while (my $fc = $self->getFirstChild()) {
         $self = $fc;
     }
     return($self);
@@ -253,7 +253,7 @@ sub getLeftBranch {
 sub getRightBranch {
     my ($self) = @_;
     (defined $self) || return(undef);
-    while(my $fc = $self->getLastChild()) {
+    while (my $fc = $self->getLastChild()) {
         $self = $fc;
     }
     return($self);
@@ -262,7 +262,7 @@ sub getRightBranch {
 sub getDepth {
     my ($self) = @_;
     my $d = 0;
-    while(defined $self) {
+    while (defined $self) {
         $d++;
         $self = $self->getParentNode();
     }
@@ -282,7 +282,7 @@ def getChildIndex($self) {  # First child is [0]!
 sub getFQGI {
     my ($self) = @_;
     my $f = "";
-    while(defined $self) {
+    while (defined $self) {
         $f = "/" . $self->getNodeName() . $f;
         $self = $self->getParentNode();
     }
@@ -291,7 +291,7 @@ sub getFQGI {
 
 sub isWithin {
     my ($self, $gi) = @_;
-    while(defined $self) {
+    while (defined $self) {
         ($self->getNodeName() eq $gi) && return(1);
         $self = $self->getParentNode();
     }
@@ -299,9 +299,12 @@ sub isWithin {
 }
 
 sub getXPointer {
-    my ($self) = @_;
+    my ($self, $useID) = @_;
     my $f = "";
-    while(defined $self) {
+    while (defined $self) {
+        if ($useID && $self->getAttribute('id')) {
+            return($self->getAttribute('id') . "/" . $f);
+        }
         $f = "/" . $self->getParentNode()->getChildIndex($self) . $f;
         $self = $self->getParentNode();
     }
@@ -396,7 +399,7 @@ sub getInheritedAttribute {
         my $avalue = $self->getAttribute($aname);
         if (defined $avalue) { return($avalue); }
         $self = $self->getParentNode();
-    } while($self);
+    } while ($self);
     return(undef);
 }
 
@@ -1182,7 +1185,7 @@ sub new {
             if (defined $key) { $index{$key} = $node; }
         }
         $node = $node->getFolowing();
-    } while($node);
+    } while ($node);
     my $self = {
         document    => $document,
         attrName    => $aname,
