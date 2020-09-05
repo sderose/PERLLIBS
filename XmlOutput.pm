@@ -1,35 +1,7 @@
 #!/usr/bin/perl -w
 #
 # XmlOutput.pm
-#
 # Written 2010-12-22 by Steven J. DeRose.
-# 2011-03-14 sjd: IRI, makeCharRef().
-# 2011-03-15 sjd: Protect against empty stack. More doc. Better escaping.
-#     Much better break management. Add empties and inlines lists.
-# 2011-03-24 sjd: Add Export of subr names.
-# 2011-08-26 sjd: Add $offset arg to getIndentString to fix ETAG[CO].
-# 2011-09-01 sjd: Add setInline("#HTML"). HTML::Entities,
-# 2012-03-02 sjd: Rename escape...() functions to escapeFor...(). OBS
-# 2012-03-30 sjd: Rename package.
-# 2012-04-26 sjd: Catch "--" in makeComment().
-# 2012-05-09 sjd: doPrint() -> makeRawText(). Add makeElementWithText().
-# 2012-11-05 sjd: Nuke escapeFor... in favor of escape....
-# 2013-01-23 sjd: Sync w/ ElementManager.pm, API.
-# 2013-06-06: Clean up options. Better doc. Sync w/ plain2html.
-#     Support HTML named entities, escapeUris. Add attrStack.
-#     Queue attrs as a hash, not a string, and clean up attr generation.
-# 2013-09-19: Re-sync w/ ElementManager.pm. Separate the common API portions.
-# 2014-01-10: Fix some bugs. Add getOptionList().
-#
-# To do:
-#     Add newElement(self, name) -- closeThroughElement, then open.
-#     Sync with ElementManager.pm.
-#     Implement -idAttrName.
-#     Consolidate rest of setters into setOption.
-#     Option to omit inheritable xml:lang and xmlns: attributes.
-#     Sync escape... methods w/ sjdUtils.pm (or just use).
-#     Add parseAndInsertXML(). OpenMultiple().
-#     Move in getCurrentNamespace from ElementManager.pm (last omission).
 #
 use strict;
 use HTML::Entities;
@@ -37,7 +9,559 @@ use HTML::Entities;
 use Exporter;
 our @ISA = qw( Exporter );
 
-our $VERSION_DATE = "1.3";
+our %metadata = (
+    'title'        => "XmlOutput.pm",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2010-12-22",
+    'modified'     => "2020-08-24",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
+
+
+=pod
+
+=head1 Usage
+
+use XmlOutput;
+
+A Perl module to help with generating XML output.
+
+Very similar to I<ElementManager.pm>, but enables creating XML structures, not
+just getting information about one in process. You should always get WF XML,
+unless you resort to I<makeRawText>().
+
+You can tell it about various elements to save effort, such as putting newlines
+before certain elements, ensuring that some are always empty (so you needn't
+explicitly close them), and so on.
+It can do generic or customized pretty-printing, too.
+
+It keeps the output element stack and some other state information, handles
+escaping for all syntactic contexts, and generally tries to
+ensure that you end up with well-formed XML. It also makes your XML-generating
+application more readable, because you only have to deal with high-level,
+(hopefully) intuitive methods (e.g., closeThroughElement("foo"),
+makeComment(text),...).
+
+The I<adjustToRank(n)> method (see below) is especially useful when cleaning up HTML, or
+creating XML from formats that do not have DIV-like containers with clear levels.
+
+
+=head2 Example
+
+    use XmlOutput;
+
+    my $xo = new XmlOutput();
+    $xo->setEmpty("br hr");
+    $xo->setCantRecurse("p");
+    $xo->setSpace("p li blockquote", 2);
+    $xo->setSpace("h1 h2 h3 h4 h5 h6", 3);
+    $xo->setInline("#HTML");
+
+    $xo->makeDoctype("html");
+    $xo->openElement("html");
+    $xo->makeEmpty("head");
+    $xo->openElement("body");
+    $xo->openElement("div", "class='main'");
+    $xo->openElement("p");
+    $xo->makeText("Hello, world");
+    $xo->closeAllElements("html");
+
+
+=head1 Methods
+
+B<Note>: Many of the methods are the same as ones in C<ElementManager.pm>, a
+lighter-weight version meant to track state while you're using an XML Parser
+such as CPAN's C<XML::Parser>. This package is mostly, though not yet entirely,
+a superset of C<ElementManager.pm>, and may become a subclass.
+
+
+=head2 General Methods
+
+=over
+
+=item * B<new>(outFH)
+
+Create a new instance of the XmlOutput object.
+XML output will go to file handle I<outFH> if specified, otherwise to STDOUT.
+
+=item * B<getVersion>()
+
+Return the version date of the XmlOutput.pm Perl module.
+
+=item * B<getOption(name)>
+
+Return the current value of option I<name>. See L<Options> section.
+
+=item * B<getOptionList>()
+
+Return an array of the known option names.
+
+=item * B<setOption(name, value)>
+
+Set option I<name> to I<value>.
+The name is checked for being a known option, but no
+checking is done on the value (values are Boolean (1 or 0) unless
+otherwise noted). See L<Options> section below.
+
+=item * B<setCantRecurse(types)>
+
+Prevent any element type listed (space-separated) in I<types>
+from being opened recursively.
+For example, if you set this for C<p>, and the open elements
+are html/body/div/p/footnote/, and you attempt to open another C<p>, then
+the I<footnote> and I<p> elements will be automatically closed before
+the new C<p> is opened.
+
+=item * B<setSpace(types,n)>
+
+Cause I<n> extra newlines to be issued before the start of each instance
+of any element type listed (space-separated) in I<types>.
+
+=item * B<setInline(types)>
+
+Add each (space-separated) element type in I<types> to a list of elements
+to be treated as inline (thus getting no breaks around it despite
+general options for breaking).
+
+If I<types> is "#HTML", the HTML 4 inline tags will all be added to the list:
+A ABBR ACRONYM B BASEFONT BDO BIG BR CITE CODE DFN
+EM FONT I IMG INPUT KBD LABEL Q S SAMP SELECT SMALL
+SPAN STRIKE STRONG SUB SUP TEXTAREA TT U VAR.
+
+Some other HTML tags are only sometimes inline
+(APPLET BUTTON DEL IFRAME INS MAP OBJECT SCRIPT).
+These are not added by #HTML,
+but some or all can be added with another call to I<setInline>().
+
+=item * B<setEmpty(types)>
+
+Cause any element type listed (space-separated) in I<types> to be
+written out as an empty element when opened (thus, no I<closeElement>() call
+is needed for them). You can instead just issue them via I<makeEmptyElement>.
+
+=item * B<setSuppress(types)>
+
+Record that elements of any type listed (space-separated) in I<types>
+(and their entire subtrees) should not be output at all.
+
+=item * B<getCurrentElementName>() or B<getCurrentType>()
+
+Return the element type name of the innermost open element.
+
+=item * B<getCurrentFQGI>()
+
+Return the sequence of the types of all open elements, from the top down.
+For example, C<html/body/div/div/ul/li/p/i>.
+
+=item * B<getCurrentLanguage>()
+
+Return the present (possibly inherited) value of C<xml:lang>.
+
+=item * B<getDepth>() or B<getCurrentDepth>()
+
+Return how many elements are presently open.
+See also I<howManyAreOpen(typelist)>.
+
+=item * B<howManyAreOpen(typelist)>
+
+Return the number of instances of the listed element type(s) that are open.
+See also I<getCurrentDepth>().
+
+=back
+
+
+=head2 Attribute Queueing Methods
+
+=over
+
+=item * B<queueAttribute(name, value)>
+
+Add an attribute, to be issued with the next start-tag.
+If an attribute called I<name> is already queued, replace it.
+
+=item * B<getQueuedAttributes>()
+
+Return all queued attributes (if any) as a hash.
+They are not cleared. This is typically only called internally.
+
+=item * B<clearQueuedAttributes>()
+
+Discard any queued attributes (this also happens automatically if
+you open a new element, since it will use any queued attributes).
+
+=back
+
+
+=head2 Element Generation Methods
+
+=over
+
+=item * B<openElement(type, attrs, makeEmpty)>
+
+Open an instance of the specified element I<type>.
+If I<attrs> is specified, it will be added as a literal attribute string
+(for example, you could pass "id='x1' class=\"foo\"").
+If there are queued attributes (see I<queueAttribute>()), they will
+also be issued and then de-queued.
+If I<makeEmpty> is specified and true, the element will be an empty
+element (and thus will not remain open).
+
+=item * B<openMultiple(type1, type2,...)>
+
+Call I<openElement>() on each argument in turn.
+
+=item * B<openElementUnlessOpen(gi, attrs)>
+
+Just like I<openElement>, except that it does nothing if the element
+is already open (it need not be the innermost element).
+Known in some quarters as "openElementIfNeeded".
+See also I<openElementUnlessCurrent>.
+
+=item * B<openElementUnlessCurrent(gi, attrs)>
+
+Just like I<openElement>, except that it does nothing only when the element
+is already I<current> (that is, it is open as the innermost element).
+
+=item * B<makeEmptyElement(type, attrs)>
+
+Output an XML empty element of the given element I<type> and I<attributes>.
+Queued attributes (if any) will also be applied.
+
+=item * B<makeElementWithText(type, text)>
+
+Open a I<type> element, output the I<text> as with I<makeText>,
+and then close the I<type> element.
+
+=item * B<closeElement(type)>
+
+Close the specified element. Wars if it is not the innermost open element,
+and closes down to it.
+I<type> may be omitted, in which case the innermost element is closed,
+whatever its type. B<Note:> To close an element even if there are other
+elements also close, and avoid the warning, use I<closeThroughElement(). >
+
+=item * B<closeMultiple(type1, type2,...)>
+
+Call I<closeElement>() on each argument in turn.
+
+=item * B<closeAllElements>()
+
+Close all open elements.
+
+=item * B<closeToElement(type)>
+
+Close down to, but not including, the innermost instance of the
+specified element.
+If the element is not open, nothing happens.
+See also I<closeThroughElement> and I<closeAllOfThese>.
+
+=item * B<closeThroughElement(type)>
+
+Close down to and including, the specified element.
+If the element is not open, nothing happens.
+See also I<closeAllOfThese>.
+
+=item * B<closeAllOfThese(typelist)>
+
+Close all instances of any element types in the (space-delimited)
+list I<typelist>. Other elements are also close if needed to do this.
+
+=item * B<adjustToRank(n)>
+
+This is specialized for helping make nested structures with tags like HTML's "div",
+which do not have a depth number as part of the element type name, but nest.
+
+This method will close and open as many elements as needed to get to a state
+where a new instance of level I<n> of the nestable element type is open
+(the type is chosen via the I<divTag> option). Specifically:
+
+=over
+
+=item * it closes elements if needed,
+out to and including the I<n>th nested "div";
+
+=item * it opens the nestable element type until I<n> are open,
+automatically adding a I<class="level_X"> attribute to each;
+
+=item * if the I<divClass> option
+is set, its value will be used as the name of an attribute (default: C<class>)
+on which to encode the level-number of the div.
+
+=back
+
+This will leave everything ready for opening a title or heading.
+If you were already at level I<n> it will close the I<divTag> element
+and open a new one;
+if you were nested deeper, the deeper stuff will all be closed first;
+and if you weren't that deep, it will open as many "div"s as needed
+(it does not provide default titles or headings, however).
+
+=back
+
+
+=head2 Other Markup Generation Methods
+
+=over
+
+=item * B<makeDoctype(doctypename, publicID, systemID)>
+
+Output an XML DOCTYPE declaration.
+
+=item * B<endDocument>()
+
+Do a closeAllElements(), and then close the output file.
+
+=item * B<makeComment(text)>
+
+Output an XML comment. Any instances of "--" within I<text> will have
+a space inserted.
+
+=item * B<makePI(target, text)>
+
+Create a Processing Instruction directed to the specified I<target>,
+with the given I<content>.
+
+=item * B<makeCharRef(e)>
+
+Create an entity or character reference.
+If I<e> is numeric, it will make a 5-digit hexadecimal
+numeric character reference;
+otherwise it will assume I<e> is just an entity name.
+See also I<--htmlEntities>.
+
+=item * B<makeText(text)>
+
+Output I<text> as XML content. It will have XML delimiters escaped as needed,
+unless you unset the I<escapeText> option.
+If you set the I<asciiOnly> option, all non-ASCII characters
+will be turned into character references.
+
+=item * B<makeRawText(s)>
+
+Write I<s> literally to the output (this is mainly used internally).
+No escaping is done. If you use this method, all bets are off as far
+as producing Well-Formed XML.
+
+=back
+
+
+=head2 String and Escaping Methods
+
+=over
+
+=item * B<escapeAttribute(s)>
+
+Escape the string I<s> to be acceptable as an attribute value
+(removing <, &, and "). If the I<asciiOnly> option is set, escape non-ASCII
+characters in I<s> as well.
+
+=item * B<escapeAscii(s)>
+
+Replace any non-ASCII characters in the text with entity references.
+
+=item * B<escapeUri>()
+
+Escape non-URI characters using the URI %xx convention.
+If the I<iri> option is set, don't escape chars just because they're
+non-ASCII; only escape URI-prohibited ASCII characters.
+
+=item * B<escapeXmlContent>()
+
+Escape XML delimiters as needed in text content.
+
+=item * B<fixName(name)>
+
+Ensure that the argument is a valid XML NAME.
+Any other characters become "_".
+
+=item * B<normalizeSpace>()
+
+Do the equivalent of XSLT's I<normalize-space>() function on I<s>.
+That is, remove leading and trailing whitespace, and reduce any internal
+runs of whitespace to a single regular space character.
+
+=item * B<sysgen>()
+
+Return a unique identifier each time it's called. You can control the
+prefix applied, via the I<sysgenPrefix> option (the default is the *nix time).
+Other than the prefix, this just generates a counter.
+
+=back
+
+
+=head1 Options
+
+These options are accessed via I<setOption> and I<getOption> (see above).
+
+A few special options take lists of element type names as their values.
+Those have separate functions, listed above under L<General Methods>:
+i<setSpace>, i<setInline>, i<setEmpty>, i<setCantRecurse>, i<setSuppress>.
+
+=over
+
+=item * B<asciiOnly> -- Use entities for all non-ASCII content characters.
+Default: off.
+
+=item * B<breakSTAGO> -- Break before start-tags.
+Default: on.
+
+=item * B<breakAttrs> -- Break before each attribute.
+Default: off.
+
+=item * B<breakSTAGC> -- Break after start-tags.
+Default: off.
+
+=item * B<breakETAGO> -- Break before end-tags.
+Default: off.
+
+=item * B<breakETAGC> -- Break after end-tags.
+Default: off.
+
+=item * B<divClass> -- If non-empty, then with I<adjustToRank>(),
+I<divTag> elements that are generated will also get an attribute
+of this name, with the level number in the value.
+Default: C<class>.
+
+=item * B<divTag> -- what element type is used for nested containers,
+like (the default) HTML C<div>. See method I<adjustToRank> for a handy
+way to ensure that divs get handled right even if the source document
+only has headings (H1, H2, or similar), not entire section containers.
+There is presently no special support for
+numbered (e.g., div1, div2,...), or
+named (e.g. part, chapter, sec, subsec,...) division levels.
+Default: C<div>.
+
+=item * B<entityFormat> -- What form to use for numeric character references,
+as a sprintf() format-string. Default "&#x%05x;"
+
+=item * B<escapeText> -- Whether to escape <, &, etc. for XML.
+Default: on. If you need to write some text that is not escaped,
+you can do it with I<makeRawText> instead.
+
+=item * B<escapeUris> -- Whether to add %xx escaping in attributes that
+appear to be hrefs (they start with a scheme name and "://"). Default: off.
+The escaping mechanism is also available separately, as I<escapeUri>.
+
+=item * B<fixNames> -- Correct any requested element type names to be
+valid XML NAMEs. Default: off.
+
+=item * B<htmlEntities> -- Use HTML named entities for special
+characters when possible. Default: off.
+
+=item * B<htmlFormat> -- Use SGML/HTML rather than XML style empty elements.
+Default: off (that is, use XML style)
+
+=item * B<idAttrName> -- Specify an attribute name to treat as an XML ID (mainly
+for use with I<trackIDs>. Default: id. (Not yet implemented).
+
+=item * B<indent> -- Pretty-print the XML output. Default: on.
+
+=item * B<iri> -- Allow non-ASCII characters in URIs. Default: on.
+
+=item * B<iString> -- Use this string as the (repeated) indent-string
+for pretty-printing. Default: "    " (4 spaces).
+B<Note>: This can also be accessed using I<setIndentString>() and
+I<setIndentString>(), for compatibility with C<ElementManager.pm>.
+
+=item * B<normalizeText> -- Normalize white-space in output text nodes.
+Default: off.
+
+=item * B<oencoding> -- (unsupported) Default: utf8.
+
+=item * B<suppressWSN> -- Do not output white-space-only text nodes.
+Default: off.
+
+=item * B<sysgenPrefix> -- Set what string is prefixed to a serial number
+with the I<sysgen>() call. Default: the *nix time when the XmlOutput
+object was instantiated. Default: "A" plus the current C<time()>.
+
+=item * B<trackIDs> -- (unsupported) Warn if an "id" attribute value is
+re-used (this does not see any DTD, it just goes by attribute name).
+See I<idAttrName>. Default: off.
+
+=item * B<URIchars> -- What characters are allowed (unescaped) in URIs.
+If the I<iri> option is set, all non-ASCII characters are also allowed.
+Default: "-.\\w\\d_!\$\'()*+".
+
+=back
+
+
+=head1 Known bugs and limitations
+
+Should hook up to C<XML::DOM> so you can just write out an element or subtree
+from DOM in one step.
+
+Doesn't know much about namespaces yet.
+
+Automation of C<xml:lang> attributes is not finished.
+
+Doesn't know anything about conforming to a particular schema.
+
+
+=head1 Related commands
+
+C<ElementManager.pm> -- Similar, but mainly intended to keep track during
+parsing, not generation. It tracks the stack, IDs, xml:lang, etc., but doesn't
+do escaping or output, search around the stack for things, etc.
+
+
+=head1 History
+
+    Written 2010-12-22 by Steven J. DeRose.
+    2011-03-14 sjd: IRI, makeCharRef().
+    2011-03-15 sjd: Protect against empty stack. More doc. Better escaping.
+Much better break management. Add empties and inlines lists.
+    2011-03-24 sjd: Add Export of subr names.
+    2011-08-26 sjd: Add $offset arg to getIndentString to fix ETAG[CO].
+    2011-09-01 sjd: Add setInline("#HTML"). HTML::Entities,
+    2012-03-02 sjd: Rename escape...() functions to escapeFor...(). OBS
+    2012-03-30 sjd: Rename package.
+    2012-04-26 sjd: Catch "--" in makeComment().
+    2012-05-09 sjd: doPrint() -> makeRawText(). Add makeElementWithText().
+    2012-11-05 sjd: Nuke escapeFor... in favor of escape....
+    2013-01-23 sjd: Sync w/ ElementManager.pm, API.
+    2013-06-06: Clean up options. Better doc. Sync w/ plain2html.
+Support HTML named entities, escapeUris. Add attrStack.
+Queue attrs as a hash, not a string, and clean up attr generation.
+    2013-09-19: Re-sync w/ ElementManager.pm. Separate the common API portions.
+    2014-01-10: Fix some bugs. Add getOptionList().
+    2020-08-24: New layout.
+
+
+=head1 To do:
+
+    Re-sync with Python version (esp. XmlDcl support).
+        setOutput
+        startDocument
+        startHTML
+        makeXMLDeclaration
+        makeSmallElement
+        normalizeTag
+    Add newElement(self, name) -- closeThroughElement, then open.
+    Sync with ElementManager.pm.
+    Implement -idAttrName.
+    Consolidate rest of setters into setOption.
+    Option to omit inheritable xml:lang and xmlns: attributes.
+    Sync escape... methods w/ sjdUtils.pm (or just use).
+    Add parseAndInsertXML(). OpenMultiple().
+    Move in getCurrentNamespace from ElementManager.pm (last omission).
+
+
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons
+Attribution-Share Alike 3.0 Unported License. For further information on
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+=cut
+
 
 # These are common to ElementManager.pm.
 #
@@ -82,9 +606,6 @@ push @EXPORT, qw(
 our $schemes = "http|https|ftp|mailto";
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 #
 package XmlOutput;
@@ -93,7 +614,7 @@ sub new {
     my ($class, $oFH) = @_;
 
     my $self = {
-        version          => "2014-01-10",
+        version          => $VERSION_DATE,
         outputFH         => ($oFH) ? $oFH : \*STDOUT,
 
         ############################## # Output XML tree state
@@ -167,7 +688,6 @@ sub reset {
 }
 
 
-###############################################################################
 ###############################################################################
 # Generate markup (basic)
 #
@@ -254,7 +774,6 @@ sub closeElement {
 
 
 ###############################################################################
-###############################################################################
 # Get basic state information
 #
 sub getDepth {
@@ -303,7 +822,6 @@ sub getCurrentLanguage {
 
 
 ###############################################################################
-###############################################################################
 #
 sub getCurrentXPath {
     my ($self,
@@ -331,7 +849,6 @@ sub getElementCount {
 }
 
 
-###############################################################################
 ###############################################################################
 # Get information about whether a given element type(s) is open.
 #
@@ -380,8 +897,6 @@ sub findNOpen {
 }
 
 
-###############################################################################
-###############################################################################
 ###############################################################################
 # Option handling
 #
@@ -512,8 +1027,6 @@ sub parseAttrString {
 } # parseAttrString
 
 
-
-###############################################################################
 ###############################################################################
 # Generate markup (fancier)
 #
@@ -601,7 +1114,6 @@ sub adjustToRank {
 
 
 ###############################################################################
-###############################################################################
 #
 sub makeDoctype {
     my ($self, $documentElement, $pub, $sys) = @_;
@@ -680,7 +1192,6 @@ sub makeRawText {
 }
 
 
-###############################################################################
 ###############################################################################
 # Escape as needed for various XML contexts.
 # (these are all available in sjdUtils.pm as well).
@@ -771,530 +1282,5 @@ sub sysgen {
     my ($self) = @_;
     return($self->{sysgenPrefix} . $self->{sysgenCounter}++);
 }
-
-
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-use XmlOutput;
-
-A Perl module to help with generating XML output.
-
-Very similar to I<ElementManager.pm>, but enables creating XML structures, not
-just getting information about one in process. You should always get WF XML,
-unless you resort to I<makeRawText>().
-
-You can tell it about various elements to save effort, such as putting newlines
-before certain elements, ensuring that some are always empty (so you needn't
-explicitly close them), and so on.
-It can do generic or customized pretty-printing, too.
-
-It keeps the output element stack and some other state information, handles
-escaping for all syntactic contexts, and generally tries to
-ensure that you end up with well-formed XML. It also makes your XML-generating
-application more readable, because you only have to deal with high-level,
-(hopefully) intuitive methods (e.g., closeThroughElement("foo"),
-makeComment(text),...).
-
-The I<adjustToRank(n)> method (see below) is especially useful when cleaning up HTML, or
-creating XML from formats that do not have DIV-like containers with clear levels.
-
-
-=head2 Example
-
-    use XmlOutput;
-
-    my $xo = new XmlOutput();
-    $xo->setEmpty("br hr");
-    $xo->setCantRecurse("p");
-    $xo->setSpace("p li blockquote", 2);
-    $xo->setSpace("h1 h2 h3 h4 h5 h6", 3);
-    $xo->setInline("#HTML");
-
-    $xo->makeDoctype("html");
-    $xo->openElement("html");
-    $xo->makeEmpty("head");
-    $xo->openElement("body");
-    $xo->openElement("div", "class='main'");
-    $xo->openElement("p");
-    $xo->makeText("Hello, world");
-    $xo->closeAllElements("html");
-
-
-
-=head1 Methods
-
-B<Note>: Many of the methods are the same as ones in C<ElementManager.pm>, a
-lighter-weight version meant to track state while you're using an XML Parser
-such as CPAN's C<XML::Parser>. This package is mostly, though not yet entirely,
-a superset of C<ElementManager.pm>, and may become a subclass.
-
-
-=head2 General Methods
-
-=over
-
-=item * B<new>(outFH)
-
-Create a new instance of the XmlOutput object.
-XML output will go to file handle I<outFH> if specified, otherwise to STDOUT.
-
-=item * B<getVersion>()
-
-Return the version date of the XmlOutput.pm Perl module.
-
-=item * B<getOption(name)>
-
-Return the current value of option I<name>. See L<Options> section.
-
-=item * B<getOptionList>()
-
-Return an array of the known option names.
-
-=item * B<setOption(name, value)>
-
-Set option I<name> to I<value>.
-The name is checked for being a known option, but no
-checking is done on the value (values are Boolean (1 or 0) unless
-otherwise noted). See L<Options> section below.
-
-=item * B<setCantRecurse(types)>
-
-Prevent any element type listed (space-separated) in I<types>
-from being opened recursively.
-For example, if you set this for C<p>, and the open elements
-are html/body/div/p/footnote/, and you attempt to open another C<p>, then
-the I<footnote> and I<p> elements will be automatically closed before
-the new C<p> is opened.
-
-=item * B<setSpace(types,n)>
-
-Cause I<n> extra newlines to be issued before the start of each instance
-of any element type listed (space-separated) in I<types>.
-
-=item * B<setInline(types)>
-
-Add each (space-separated) element type in I<types> to a list of elements
-to be treated as inline (thus getting no breaks around it despite
-general options for breaking).
-
-If I<types> is "#HTML", the HTML 4 inline tags will all be added to the list:
-A ABBR ACRONYM B BASEFONT BDO BIG BR CITE CODE DFN
-EM FONT I IMG INPUT KBD LABEL Q S SAMP SELECT SMALL
-SPAN STRIKE STRONG SUB SUP TEXTAREA TT U VAR.
-
-Some other HTML tags are only sometimes inline
-(APPLET BUTTON DEL IFRAME INS MAP OBJECT SCRIPT).
-These are not added by #HTML,
-but some or all can be added with another call to I<setInline>().
-
-=item * B<setEmpty(types)>
-
-Cause any element type listed (space-separated) in I<types> to be
-written out as an empty element when opened (thus, no I<closeElement>() call
-is needed for them). You can instead just issue them via I<makeEmptyElement>.
-
-=item * B<setSuppress(types)>
-
-Record that elements of any type listed (space-separated) in I<types>
-(and their entire subtrees) should not be output at all.
-
-=item * B<getCurrentElementName>() or B<getCurrentType>()
-
-Return the element type name of the innermost open element.
-
-=item * B<getCurrentFQGI>()
-
-Return the sequence of the types of all open elements, from the top down.
-For example, C<html/body/div/div/ul/li/p/i>.
-
-=item * B<getCurrentLanguage>()
-
-Return the present (possibly inherited) value of C<xml:lang>.
-
-=item * B<getDepth>() or B<getCurrentDepth>()
-
-Return how many elements are presently open.
-See also I<howManyAreOpen(typelist)>.
-
-=item * B<howManyAreOpen(typelist)>
-
-Return the number of instances of the listed element type(s) that are open.
-See also I<getCurrentDepth>().
-
-=back
-
-
-=for nobody ===================================================================
-
-=head2 Attribute Queueing Methods
-
-=over
-
-=item * B<queueAttribute(name, value)>
-
-Add an attribute, to be issued with the next start-tag.
-If an attribute called I<name> is already queued, replace it.
-
-=item * B<getQueuedAttributes>()
-
-Return all queued attributes (if any) as a hash.
-They are not cleared. This is typically only called internally.
-
-=item * B<clearQueuedAttributes>()
-
-Discard any queued attributes (this also happens automatically if
-you open a new element, since it will use any queued attributes).
-
-=back
-
-
-=for nobody ===================================================================
-
-=head2 Element Generation Methods
-
-=over
-
-=item * B<openElement(type, attrs, makeEmpty)>
-
-Open an instance of the specified element I<type>.
-If I<attrs> is specified, it will be added as a literal attribute string
-(for example, you could pass "id='x1' class=\"foo\"").
-If there are queued attributes (see I<queueAttribute>()), they will
-also be issued and then de-queued.
-If I<makeEmpty> is specified and true, the element will be an empty
-element (and thus will not remain open).
-
-=item * B<openMultiple(type1, type2,...)>
-
-Call I<openElement>() on each argument in turn.
-
-=item * B<openElementUnlessOpen(gi, attrs)>
-
-Just like I<openElement>, except that it does nothing if the element
-is already open (it need not be the innermost element).
-Known in some quarters as "openElementIfNeeded".
-See also I<openElementUnlessCurrent>.
-
-=item * B<openElementUnlessCurrent(gi, attrs)>
-
-Just like I<openElement>, except that it does nothing only when the element
-is already I<current> (that is, it is open as the innermost element).
-
-=item * B<makeEmptyElement(type, attrs)>
-
-Output an XML empty element of the given element I<type> and I<attributes>.
-Queued attributes (if any) will also be applied.
-
-=item * B<makeElementWithText(type, text)>
-
-Open a I<type> element, output the I<text> as with I<makeText>,
-and then close the I<type> element.
-
-=item * B<closeElement(type)>
-
-Close the specified element. Wars if it is not the innermost open element,
-and closes down to it.
-I<type> may be omitted, in which case the innermost element is closed,
-whatever its type. B<Note:> To close an element even if there are other
-elements also close, and avoid the warning, use I<closeThroughElement(). >
-
-=item * B<closeMultiple(type1, type2,...)>
-
-Call I<closeElement>() on each argument in turn.
-
-=item * B<closeAllElements>()
-
-Close all open elements.
-
-=item * B<closeToElement(type)>
-
-Close down to, but not including, the innermost instance of the
-specified element.
-If the element is not open, nothing happens.
-See also I<closeThroughElement> and I<closeAllOfThese>.
-
-=item * B<closeThroughElement(type)>
-
-Close down to and including, the specified element.
-If the element is not open, nothing happens.
-See also I<closeAllOfThese>.
-
-=item * B<closeAllOfThese(typelist)>
-
-Close all instances of any element types in the (space-delimited)
-list I<typelist>. Other elements are also close if needed to do this.
-
-=item * B<adjustToRank(n)>
-
-This is specialized for helping make nested structures with tags like HTML's "div",
-which do not have a depth number as part of the element type name, but nest.
-
-This method will close and open as many elements as needed to get to a state
-where a new instance of level I<n> of the nestable element type is open
-(the type is chosen via the I<divTag> option). Specifically:
-
-=over
-
-=item * it closes elements if needed,
-out to and including the I<n>th nested "div";
-
-=item * it opens the nestable element type until I<n> are open,
-automatically adding a I<class="level_X"> attribute to each;
-
-=item * if the I<divClass> option
-is set, its value will be used as the name of an attribute (default: C<class>)
-on which to encode the level-number of the div.
-
-=back
-
-This will leave everything ready for opening a title or heading.
-If you were already at level I<n> it will close the I<divTag> element
-and open a new one;
-if you were nested deeper, the deeper stuff will all be closed first;
-and if you weren't that deep, it will open as many "div"s as needed
-(it does not provide default titles or headings, however).
-
-=back
-
-
-=for nobody ===================================================================
-
-=head2 Other Markup Generation Methods
-
-=over
-
-=item * B<makeDoctype(doctypename, publicID, systemID)>
-
-Output an XML DOCTYPE declaration.
-
-=item * B<endDocument>()
-
-Do a closeAllElements(), and then close the output file.
-
-=item * B<makeComment(text)>
-
-Output an XML comment. Any instances of "--" within I<text> will have
-a space inserted.
-
-=item * B<makePI(target, text)>
-
-Create a Processing Instruction directed to the specified I<target>,
-with the given I<content>.
-
-=item * B<makeCharRef(e)>
-
-Create an entity or character reference.
-If I<e> is numeric, it will make a 5-digit hexadecimal
-numeric character reference;
-otherwise it will assume I<e> is just an entity name.
-See also I<--htmlEntities>.
-
-=item * B<makeText(text)>
-
-Output I<text> as XML content. It will have XML delimiters escaped as needed,
-unless you unset the I<escapeText> option.
-If you set the I<asciiOnly> option, all non-ASCII characters
-will be turned into character references.
-
-=item * B<makeRawText(s)>
-
-Write I<s> literally to the output (this is mainly used internally).
-No escaping is done. If you use this method, all bets are off as far
-as producing Well-Formed XML.
-
-=back
-
-
-=for nobody ===================================================================
-
-=head2 String and Escaping Methods
-
-=over
-
-=item * B<escapeAttribute(s)>
-
-Escape the string I<s> to be acceptable as an attribute value
-(removing <, &, and "). If the I<asciiOnly> option is set, escape non-ASCII
-characters in I<s> as well.
-
-=item * B<escapeAscii(s)>
-
-Replace any non-ASCII characters in the text with entity references.
-
-=item * B<escapeUri>()
-
-Escape non-URI characters using the URI %xx convention.
-If the I<iri> option is set, don't escape chars just because they're
-non-ASCII; only escape URI-prohibited ASCII characters.
-
-=item * B<escapeXmlContent>()
-
-Escape XML delimiters as needed in text content.
-
-=item * B<fixName(name)>
-
-Ensure that the argument is a valid XML NAME.
-Any other characters become "_".
-
-=item * B<normalizeSpace>()
-
-Do the equivalent of XSLT's I<normalize-space>() function on I<s>.
-That is, remove leading and trailing whitespace, and reduce any internal
-runs of whitespace to a single regular space character.
-
-=item * B<sysgen>()
-
-Return a unique identifier each time it's called. You can control the
-prefix applied, via the I<sysgenPrefix> option (the default is the *nix time).
-Other than the prefix, this just generates a counter.
-
-=back
-
-
-
-=for nobody ===================================================================
-
-=head1 Options
-
-These options are accessed via I<setOption> and I<getOption> (see above).
-
-A few special options take lists of element type names as their values.
-Those have separate functions, listed above under L<General Methods>:
-i<setSpace>, i<setInline>, i<setEmpty>, i<setCantRecurse>, i<setSuppress>.
-
-=over
-
-=item * B<asciiOnly> -- Use entities for all non-ASCII content characters.
-Default: off.
-
-=item * B<breakSTAGO> -- Break before start-tags.
-Default: on.
-
-=item * B<breakAttrs> -- Break before each attribute.
-Default: off.
-
-=item * B<breakSTAGC> -- Break after start-tags.
-Default: off.
-
-=item * B<breakETAGO> -- Break before end-tags.
-Default: off.
-
-=item * B<breakETAGC> -- Break after end-tags.
-Default: off.
-
-=item * B<divClass> -- If non-empty, then with I<adjustToRank>(),
-I<divTag> elements that are generated will also get an attribute
-of this name, with the level number in the value.
-Default: C<class>.
-
-=item * B<divTag> -- what element type is used for nested containers,
-like (the default) HTML C<div>. See method I<adjustToRank> for a handy
-way to ensure that divs get handled right even if the source document
-only has headings (H1, H2, or similar), not entire section containers.
-There is presently no special support for
-numbered (e.g., div1, div2,...), or
-named (e.g. part, chapter, sec, subsec,...) division levels.
-Default: C<div>.
-
-=item * B<entityFormat> -- What form to use for numeric character references,
-as a sprintf() format-string. Default "&#x%05x;"
-
-=item * B<escapeText> -- Whether to escape <, &, etc. for XML.
-Default: on. If you need to write some text that is not escaped,
-you can do it with I<makeRawText> instead.
-
-=item * B<escapeUris> -- Whether to add %xx escaping in attributes that
-appear to be hrefs (they start with a scheme name and "://"). Default: off.
-The escaping mechanism is also available separately, as I<escapeUri>.
-
-=item * B<fixNames> -- Correct any requested element type names to be
-valid XML NAMEs. Default: off.
-
-=item * B<htmlEntities> -- Use HTML named entities for special
-characters when possible. Default: off.
-
-=item * B<htmlFormat> -- Use SGML/HTML rather than XML style empty elements.
-Default: off (that is, use XML style)
-
-=item * B<idAttrName> -- Specify an attribute name to treat as an XML ID (mainly
-for use with I<trackIDs>. Default: id. (Not yet implemented).
-
-=item * B<indent> -- Pretty-print the XML output. Default: on.
-
-=item * B<iri> -- Allow non-ASCII characters in URIs. Default: on.
-
-=item * B<iString> -- Use this string as the (repeated) indent-string
-for pretty-printing. Default: "    " (4 spaces).
-B<Note>: This can also be accessed using I<setIndentString>() and
-I<setIndentString>(), for compatibility with C<ElementManager.pm>.
-
-=item * B<normalizeText> -- Normalize white-space in output text nodes.
-Default: off.
-
-=item * B<oencoding> -- (unsupported) Default: utf8.
-
-=item * B<suppressWSN> -- Do not output white-space-only text nodes.
-Default: off.
-
-=item * B<sysgenPrefix> -- Set what string is prefixed to a serial number
-with the I<sysgen>() call. Default: the *nix time when the XmlOutput
-object was instantiated. Default: "A" plus the current C<time()>.
-
-=item * B<trackIDs> -- (unsupported) Warn if an "id" attribute value is
-re-used (this does not see any DTD, it just goes by attribute name).
-See I<idAttrName>. Default: off.
-
-=item * B<URIchars> -- What characters are allowed (unescaped) in URIs.
-If the I<iri> option is set, all non-ASCII characters are also allowed.
-Default: "-.\\w\\d_!\$\'()*+".
-
-=back
-
-
-
-=for nobody ===================================================================
-
-=head1 Known bugs and limitations
-
-Should hook up to C<XML::DOM> so you can just write out an element or subtree
-from DOM in one step.
-
-Doesn't know much about namespaces yet.
-
-Automation of C<xml:lang> attributes is not finished.
-
-Doesn't know anything about conforming to a particular schema.
-
-
-
-=for nobody ===================================================================
-
-=head1 Related commands
-
-C<ElementManager.pm> -- Similar, but mainly intended to keep track during
-parsing, not generation. It tracks the stack, IDs, xml:lang, etc., but doesn't
-do escaping or output, search around the stack for things, etc.
-
-
-
-=for nobody ===================================================================
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
 
 1;
