@@ -269,7 +269,8 @@ sub getDepth {
     return($d);
 }
 
-def getChildIndex($self) {  # First child is [0]!
+sub getChildIndex {  # First child is [0]!
+    my ($self) = @_;
     my $par = $self->parentNode;
     if (not $par) { return(-1); }
     for (my $i=0; $i<scalar($par->childNodes); $i++) {
@@ -416,8 +417,9 @@ sub getStartTag {
     return $buf;
 }
 
-sub getEndTag(self, comment=true) {
+sub getEndTag {
     my ($self, $comment) = @_;
+    if (undef $comment) { $comment = 1; }
     $buf = "</%s>" % (self->nodeName);
     if (comment and self->getAttribute('id')) {
         $buf += '<!-- id="%s" -->' % (self->getAttribute('id'));
@@ -457,7 +459,7 @@ sub removeWhiteSpaceNodesCB {
     $self->getParentNode()->removeChild($self);
 }
 
-sub removeNodesByTagName():
+sub removeNodesByTagName {
     my ($self, $nodeName) = @_;
     my @nodes = $self->getElementsByTagName($nodeName);
     my $ct = 0;
@@ -466,7 +468,7 @@ sub removeNodesByTagName():
         $ct += 1;
     return $ct;
 
-sub untagNodesByTagName():
+sub untagNodesByTagName {
     my ($self, $nodeName) = @_;
     for my $t in $self->getElementsByTagName($nodeName) {
         my $tn = $self->getDocument->createTextNode($t->innerText());
@@ -487,13 +489,14 @@ sub normalizeAllSpaceCB {
     $self->setData(DomExtensions::normalizeSpace($self->getData()))
 }
 
-sub addElementSpaces(self, exceptions=None) {
+sub addElementSpaces {
+    my ($self, $exceptions) = @_;
     # Add spaces around all elements *except* those specified.
     # This is useful because most elements entail word-boundaries (say, things
     # CSS would consider display:block). But little elements may not: such as
     # HTML b, i, etc., and TEI var, sic, corr, etc.
     #
-    raise "Unimplemented";
+    die "Unimplemented\n";
 }
 
 ###############################################################################

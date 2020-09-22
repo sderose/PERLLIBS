@@ -1,6 +1,8 @@
 #!/usr/bin/perl -w
 #
 # sjdUtils: some generally useful Perl crud.
+# Started around 2011-03-25 by Steven J. DeRose.
+# There is also a Python version.
 #
 package sjdUtils;
 
@@ -9,6 +11,7 @@ use Scalar::Util;
 use Encode;
 use Exporter;
 #use HTML::Entities;
+
 use ColorManager;
 use alogging;
 
@@ -19,15 +22,12 @@ our %metadata = (
     'type'         => "http://purl.org/dc/dcmitype/Software",
     'language'     => "Perl 5.18",
     'created'      => "2011-03-25",
-    'modified'     => "2020-05-06",
+    'modified'     => "2020-09-06",
     'publisher'    => "http://github.com/sderose",
     'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
 );
 our $VERSION_DATE = $metadata{'modified'};
 
-
-###############################################################################
-#
 
 =pod
 
@@ -37,10 +37,10 @@ use sjdUtils;
 
 Provide some very basic useful utilities used by many of my other scripts.
 Mostly for escaping, colorizing, handling error messages, as well as
-pretty-printing XML, strings, numbers, and times.
+pretty-printing XML, strings, numbers, and times; wrapping text;....
 
-If you use my other scripts, you probably need to install this and make
-sure Perl can find it via the C<@INC> directory-list
+Some of my other scripts use this. If you're using one of them, install
+this and make sure Perl can find it via the C<@INC> directory-list
 (part of which is taken from the environment variable C<PERL5LIB> --
 see L<here|"http://stackoverflow.com/questions/2526804">).
 
@@ -49,9 +49,6 @@ not get the output you want.
 
 B<Note>: A Python version of this package is also available.
 
-
-
-=for nobody ###################################################################
 
 =head1 Options
 
@@ -84,7 +81,8 @@ This is accomplished via my C<ColorManager.pm>.
 =item * I<loremText> (string)
 
 The text to be returned by I<lorem()>.
-Default: the usual I<lorem ipsum...>.
+Default: the usual I<lorem ipsum...>, but you can set something else,
+or generate random text and/or ensure there's a bunch of non-Latin 1 in there.
 
 =item * I<plineWidth>
 
@@ -118,8 +116,6 @@ set by I<vPush>(), I<vPop>, etc. See also I<defineMsgType>().
 
 =back
 
-
-=for nobody ###################################################################
 
 =head2 Color Names
 
@@ -187,8 +183,6 @@ Remove any ANSI terminal color escapes from I<message>.
 There are various other methods available in C<ColorManager>, which
 are I<not> available directly in C<sjdUtils>.
 
-
-=for nobody ###################################################################
 
 =head2 Colorized and level-filtered messages
 
@@ -334,8 +328,6 @@ current value of the statistic.
 =back
 
 
-=for nobody ###################################################################
-
 =head2 XML formatting
 
 See below under L<here|"Escaping and Unescaping"> for functions to prepare
@@ -407,8 +399,6 @@ Undoes the transformation of C<escapeXmlName>.
 =back
 
 
-=for nobody ###################################################################
-
 =head2 JSON formatting
 
 See also I<Escaping and Unescaping>, below.
@@ -424,11 +414,18 @@ not indenting more than I<maxIndent> levels (default: 0 = unlimited).
 =back
 
 
-=for nobody ###################################################################
-
-=head2 Minor formatting tweaks
+=head2 Minor formatting tweaks and tools
 
 =over
+
+=item * B<wrap>I<(text, indent, width, breakChar)>
+
+Wrap a block of I<text> to a given I<width> (default 80) and
+I<indent>ation (default 0).
+Only breaks at the specified I<breakChar> (default space) unless that's
+not possible (say, 80 non-spaces in a row), in which case it just breaks
+arbitrarily at C<width>.
+
 
 =item * B<isUpper>I<(s)>
 
@@ -559,8 +556,6 @@ For example, I<getUTF8(3000)> returns "%e0%ae%b8".
 
 =back
 
-
-=for nobody ###################################################################
 
 =head2 Escaping and Unescaping
 
@@ -726,8 +721,6 @@ If I<--plusToSpace> is true, then also turn "+" to space.
 =back
 
 
-=for nobody ###################################################################
-
 =head2 Time Methods
 
 =over
@@ -755,8 +748,6 @@ The elapsed time is returned in the form C<hh:mm:ss>.
 
 =back
 
-
-=for nobody ###################################################################
 
 =head2 Miscellaneous Methods
 
@@ -794,8 +785,6 @@ the thousands-separator inserted by I<lpadc>().
 =back
 
 
-=for nobody ###################################################################
-
 =head1 Known bugs and limitations
 
 There's nothing to instantiate. Thus, values like the I<verbose> level
@@ -808,8 +797,6 @@ This may be a bug or a feature....
 I<localize>() should also affect time and date formatting, and various
 strings in messages (color and emphasis names, metric suffixes, etc.).
 
-
-=for nobody ###################################################################
 
 =head1 Related commands
 
@@ -828,8 +815,6 @@ C<alignData> -- pads fields in CSV-ish files.
 
 C<unescapeURI> -- packages that method from here, for command line.
 
-
-=for nobody ###################################################################
 
 =head1 History
 
@@ -962,6 +947,10 @@ Drop ulorem option, ulorem(), and xlorem().
 
 =item 2018-11-27: Add splitPlus().
 
+=item 2020-09-06: Add wrap from C<macFinderInfo>. Clean up a little.
+Actually delete code that was moved to C<alogging.pm> some time ago.
+Add a little test driver.
+
 =back
 
 
@@ -969,13 +958,11 @@ Drop ulorem option, ulorem(), and xlorem().
 
 =over
 
-=item * Add wrap() from spot.
-
 =item * Fix toHNumber.
 
 =item * Pull in grepData::Condition::getDate().
 
-=item * Pull in struct pretty-printer from volsunga TrellisNode.
+=item * Pull in struct pretty-printer from Volsunga TrellisNode.
 
 =item * Pull in basic Unicode char normalization from findExamples.py.
 
@@ -985,8 +972,6 @@ Drop ulorem option, ulorem(), and xlorem().
 
 =back
 
-
-=for nobody ###################################################################
 
 =head1 Rights
 
@@ -1019,7 +1004,7 @@ our @EXPORT = qw(
 
     indentJson
 
-    isUpper isLower isCapitalized sc tc ssubstr
+    wrap isUpper isLower isCapitalized sc tc ssubstr
     rpad lpad lpadc cpad trim ltrim rtrim
     toHNumber fromHNumber isNumeric isInteger
 
@@ -1084,7 +1069,7 @@ my %options = (
     'TEEFILE'         => undef,  # Copy of messages goes here
     'colorEnabled'    => 1,      # Use color at all?
     'indentString'    => "  ",   # String to repeat to make indentation
-    'plineWidth'      => 40,     # Size of label portion for pline().
+    #'plineWidth'      => 40,     # Size of label portion for pline().
     'loremText'       =>
         "Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do"
         . "eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad"
@@ -1152,321 +1137,11 @@ sub uncolorize {
 
 
 ###############################################################################
-###############################################################################
 #
-# OBSOLETE: These are now in the 'alogging' package!
-#
-# Messaging calls.
-# Main features: colorizing, verbosity levels, and logging.
+# Most of the 'alogging' package used to be here. Not any more.
 #
 
-# Set default options for predefined message-types v, e, h, x.
-# This is called by Msg if $info{"msgTypesDefined"} is 0.
-#
-sub XdefineMsgTypes {
-    # Try to figure out what the background color is
-    my $bgType = "light";
-    if ($ENV{TERM_BG}) {
-        if ($ENV{TERM_BG} =~ m/(black|blue|red|magenta)/) {
-            $bgType = "dark";
-        }
-    }
-    elsif (0 && $ENV{COLORTERM} eq "gnome-terminal" &&
-           -e (my $xtc = `which xtermcontrol`)) {
-        my $xtermbg = `$xtc --get-bg`;
-        #...
-    }
 
-    if ($bgType eq "light") {
-        #             type  color  nLevels prefix   infix suffix escape indent
-        defineMsgType("v", "blue",      0, "",           "",  "",    0,  1);
-        defineMsgType("e", "red",       0, "ERROR: ",    "",  "",    1,  1);
-        defineMsgType("h", "magenta",   0, "\n******* ", "",  "",    0,  1);
-        defineMsgType("x", "blue",      0, "",           "",  "",    0,  1);
-    }
-    else {
-        defineMsgType("v", "/blue",   0, "",           "",  "",    0,  1);
-        defineMsgType("e", "/red",    0, "ERROR: ",    "",  "",    1,  1);
-        defineMsgType("h", "/magenta",0, "\n******* ", "",  "",    0,  1);
-        defineMsgType("x", "/blue",   0, "",           "",  "",    0,  1);
-    }
-    $info{"msgTypesDefined"} = 1;
-} # defineMsgTypes
-
-sub XdefineMsgType {
-    if (scalar @_ < 2 || scalar @_ > 8) {
-        my $names = "msgType,color,nLevels,prefix,infix,suffix,escape,indent";
-        die "sjdUtils: 2~8 args for defineMsgType($names).\n    Got: (" .
-            join(", ", @_) . ").\n";
-    }
-
-    my ($msgType, $color, $nLevels, $prefix, $infix, $suffix, $escape, $indent) = @_;
-    if (!$msgType) { return(0); }
-    if (!exists $msgTypes{$msgType}) {
-        $msgTypes{$msgType} = { # New type, define with defaults
-            "color"     => "black",
-            "nLevels"   => 0,
-            "prefix"    => "",
-            "infix"     => "",
-            "suffix"    => "",
-            "escape"    => 1,
-            "indent"    => 1,
-        };
-    }
-    if (defined $color )  { $msgTypes{$msgType}->{color}  = $color;   }
-    if (defined $nLevels) { $msgTypes{$msgType}->{nLevels}= $nLevels; }
-    if (defined $prefix)  { $msgTypes{$msgType}->{prefix} = $prefix;  }
-    if (defined $infix)   { $msgTypes{$msgType}->{infix}  = $infix;   }
-    if (defined $suffix)  { $msgTypes{$msgType}->{suffix} = $suffix;  }
-    if (defined $escape)  { $msgTypes{$msgType}->{escape} = $escape || 0; }
-    if (defined $indent)  { $msgTypes{$msgType}->{indent} = $indent || 0; }
-    return(1);
-} # defineMsgType
-
-# Return the proper choice escape string (not the color name), or "".
-# Use first valid color from $argColor, then $msgColor, then none.
-#
-sub XgetPickedColorString {
-    my ($argColor, $msgColor) = @_;
-    if (!$argColor) { $argColor = ""; }
-    if (!$msgColor) { $msgColor = ""; }
-
-    if (!getUtilsOption("colorEnabled")) {
-        return("");
-    }
-    if ($argColor && (my $argString = getColorString($argColor))) {
-        return($argString);
-    }
-    if ($msgColor && (my $msgString = getColorString($msgColor))) {
-        return($msgString);
-    }
-    return("");
-} # getPickedColorString
-
-
-sub XvPush { MsgPush(@_); }
-sub XMsgPush {
-    $info{msgIndentLevel}++;
-    return($info{msgIndentLevel});
-}
-sub XvPop { MsgPop(@_); }
-sub XMsgPop {
-    if ($info{msgIndentLevel}>0) { $info{msgIndentLevel}--; }
-    return($info{msgIndentLevel});
-}
-sub XMsgSet { $info{msgIndentLevel} = $_[0]; }
-sub XMsgGet { return($info{msgIndentLevel}); }
-sub XvSet { $info{msgIndentLevel} = $_[0]; }
-sub XvGet { return($info{msgIndentLevel}); }
-
-sub XvMsg { # Verbose warnings
-    my ($level, $m1, $m2) = @_;
-    my $disp = interpretLevel($level);
-    return unless($disp);
-    Msg("v", $m1||"", $m2);
-    ($disp<0) && die "Warning is fatal.\n";
-}
-
-sub XeMsg {
-    my ($level, $m1, $m2) = @_;
-    $info{"errorCount"}++;
-    my $disp = interpretLevel($level);
-    #warn "Level interpreted to $disp for $m1\n";
-    return unless($disp);
-    Msg("e", $m1, $m2);
-    ($disp<0) && die "Error is fatal.\n";
-}
-
-sub XhMsg {
-    my ($level, $m1, $m2) = @_;
-    my $disp = interpretLevel($level);
-    return unless($disp);
-    if (!defined $m1) { $m1 = ""; }
-    Msg("h", $m1, $m2);
-    ($disp<0) && die "Warning is fatal.\n";
-}
-
-# Look up message type name to get color and nTraceLevels.
-# Can also just use colors as types for convenience, or "" for no color.
-sub XMsgType {
-    return(Msg(@_));
-}
-sub XMsg {
-    my ($msgType, $m1, $m2) = @_;
-    if (!defined $m2) { $m2 = ""; }
-    if (!$info{"msgTypesDefined"}) {
-        defineMsgTypes();
-    }
-    if (!$msgType) {
-        rawMsg($m1, $m2, "", 0);
-        return;
-    }
-
-    my $mDef = $msgTypes{$msgType};
-    if (!defined $mDef) {
-        showMsg("?$msgType? $m1$m2\n");
-        return;
-    }
-
-    if ($mDef->{escape}) {
-        $m1 = showInvisibles($m1 || "");
-        $m2 = showInvisibles($m2 || "");
-    }
-
-    my $pre = $mDef->{prefix} || "";
-    my $inf = $mDef->{infix}  || "";
-    my $suf = $mDef->{suffix} || "";
-    if ($mDef->{indent}) {
-        my $ind = getUtilsOption("indentString") x $info{msgIndentLevel};
-        $pre =~ s/\n/\n$ind/g;
-        $pre = $ind . $pre;
-        $inf =~ s/\n/\n$ind/g;
-        $suf =~ s/\n/\n$ind/g;
-    }
-
-    my $colorName = "";
-    if (defined $mDef->{color}) {
-        $colorName = $mDef->{color};
-    }
-    elsif (getColorString($msgType, 'quiet')!="") {
-        #warn "Found color per se: $msgType.\n";
-        $colorName = $msgType;
-    }
-    my $on = getPickedColorString($colorName);
-    my $off = ($on) ? getColorString("off") : "";
-
-    my $nL = $mDef->{nLevels} || 0;
-    my $loc = ($nL>0) ? whereDetail($nL) : "";
-
-    my $m = join("", @{[ $on,$pre,$m1,$off,$inf,$m2,$suf,"\n",$loc ]} );
-    showMsg($m);
-    #rawMsg($ind.$m1, $m2, $colorString, $mDef->{Level} || 0);
-} # Msg
-
-# Display a message to the applicable destination(s).
-#
-sub XshowMsg {
-    my ($msg) = @_;
-    if (getUtilsOption("stdout")) { print($msg); }
-    else                          { warn($msg); }
-    if ($options{"TEEFILE"})  {
-        my $tee = $options{"TEEFILE"};
-        print $tee "$msg\n";
-    }
-} # showMsg
-
-sub XwhereDetail {
-    my $nLevels = $_[0];
-    my $loc = "";
-    for (my $lvl=1; $lvl<=$nLevels; $lvl++) {
-        my ($pkg, $filename, $line, $subr, $hasargs) = caller($lvl);
-        ($pkg) || last;
-        $loc .= "  Called from: $subr, line $line\n";
-    }
-    return($loc);
-}
-
-sub XwhereAmI {
-    my $levelsUp = ($_[0] || 0) + 1;
-    my $loc = (caller($levelsUp))[3];
-    return($loc);
-}
-
-# Returns: 0 to pass; 1 to print; -1 to print and exit.
-#
-sub XinterpretLevel {
-    my ($level) = @_;
-    if (!defined $level || !isNumeric($level)) {
-        utilWarn("Bad level '$level' passed to sjdUtils::interpretLevel()\n");
-        return(1);
-    }
-    if ($level<0) {
-        return(-1);
-    }
-    if (alogging::getOptions("verboseSet") &&
-        alogging::getLogOption("verbose") < abs($level)) {
-        return(0);
-    }
-    return(1);
-} # interpretLevel
-
-# getLoc()
-
-# Print a nicely-aligned message and data.
-# If the 2nd arg is numeric and there's a 3rd arg, show a %age.
-# ####### Fix sjdUtils::pline to ignore color escapes
-#
-sub XpLine { pline(@_); }
-sub Xpline {
-    my ($label, $data, $denom) = @_;
-    my $dataField = $data;
-    if (!defined $data) {
-        $dataField = "  ???";
-    }
-    elsif (ref($data) eq "HASH") {
-        $dataField = "(HASH, " . scalar(keys(%{$data})) . " keys)";
-    }
-    elsif (ref($data) eq "ARRAY") {
-        $dataField = "(ARRAY, " . scalar(@{$data}) . " elements)";
-    }
-    elsif (ref($data) ne "") {
-        $dataField = "(ref to " . ref($data) . ")";
-    }
-    elsif (!isNumeric($data)) {
-        $dataField = "'$data'";
-    }
-    elsif (!isInteger($data)) {
-        $dataField = sprintf("%10.3d", $data);
-    }
-    $dataField = lpad($dataField, 16, " ");
-    if ($denom) {
-        $dataField .= sprintf(" (%7.3f%%)", 100.0*$data/$denom);
-    }
-
-    if (!defined $label) { $label = ""; }
-    my $unclen = length(uncolorize($label));
-    my $padlen = $options{plineWidth} - $unclen;
-    print "  " . $label . (' ' x $padlen) . " " . $dataField . "\n";
-} # pline
-
-
-sub XsetStat {
-    my ($name, $value) = @_;
-    $info{"stats"}->{$name} = $value;
-}
-
-sub XgetStat {
-    my ($name) = @_;
-    return($info{"stats"}->{$name} || 0);
-}
-
-sub XbumpStat {
-    my ($name, $amount) = @_;
-    if (!defined $amount) { $amount = 1; }
-    $info{"stats"}->{$name} += $amount;
-}
-
-sub XmaxStat {
-    my ($name, $value) = @_;
-    if ($value <= $info{"stats"}->{$name}) { return; }
-    $info{"stats"}->{$name} = $value;
-}
-
-sub XreportStats {
-    my ($head, $labels) = @_;
-    print($head);
-    for my $s (sort(keys(%{$info{"stats"}}))) {
-        if ($labels && $labels->{$s}) {
-            pline($labels->{$s}, $info{"stats"}->{$s})
-        }
-        else {
-            pline($s, $info{"stats"}->{$s})
-        }
-    }
-}
-
-
-###############################################################################
 ###############################################################################
 # XML pretty-printing and naming.
 
@@ -1608,7 +1283,6 @@ sub unescapeXmlName {
 
 
 ###############################################################################
-###############################################################################
 #
 sub indentJson {
     my ($s, $iString, $maxIndent) = @_;
@@ -1644,11 +1318,39 @@ sub indentJson {
 } # indentJson
 
 
-
-###############################################################################
 ###############################################################################
 # Fiddly stuff for strings and numbers.
 #
+sub wrap {
+    my ($s, $indent, $width, $breakChar) = @_;
+    if (!$width)     { $width = $ENV{COLUMNS} || 80; }
+    if ($indent)     { $width -= $indent; }
+    if (!$breakChar) { $breakChar = " "; }
+
+    my $istring = " " x ($indent || 0);
+    my $buf = "";
+    for my $line (split(/[\r\n]+/, $s)) {
+        warn("***line>>>$line<<<\n");
+        while ($line ne "") {
+            if (length($line) < $width) {
+                $buf .= $istring . $line . "\n";
+                $line = ''; last;
+            }
+            my $lastShadow = rindex($line, $breakChar, $width);
+            if ($lastShadow < 0) {  # no place to break
+                $buf .= $istring . substr($line, 0, $width) . "\n";
+                $line = (length($line) > $width) ?
+                    substr($line, $width) : $line = '';
+            }
+            else {
+                $buf .= $istring . substr($line, 0, $lastShadow) . "\n";
+                $line = substr($line, $lastShadow+1);
+            }
+        }
+    }
+    return($buf);
+} # wrap
+
 sub isUpper {
     my ($s) = @_;
     return($s =~ m/^[[:upper:]]/);
@@ -1689,7 +1391,7 @@ sub tc { # Title caps
     return($s);
 }
 
-sub ssubstr { # substr() that handles out-of-bounds conditions safely
+sub ssubstr { # Safer substr(): handles out-of-bounds conditions quietly
     my ($s, $start, $len) = @_;
     my $lenAvail = length($s);
     if (!defined $len) { $len = $lenAvail-$start; }
@@ -1844,8 +1546,6 @@ sub isInteger {
 }
 
 
-
-###############################################################################
 ###############################################################################
 #
 my $ucLatin = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
@@ -1986,7 +1686,7 @@ sub makePrintable {
 } # makePrintable
 
 
-# Show control characters as Unicode control symbols.
+# Show control characters as Unicode control symbols (tiny mnemonics).
 # Space: U'2422 = bSlash, U'2423 = underbar, U'2420 = SP.
 # LF: U'240a = LF, U'2424 = NL.
 #
@@ -2226,8 +1926,6 @@ sub unescapeURI {
 }
 
 
-
-###############################################################################
 ###############################################################################
 # Human-readable times and dates (see ISO 8601)
 #
@@ -2265,7 +1963,6 @@ sub lorem {
 }
 
 
-###############################################################################
 ###############################################################################
 # Try to load a Perl module, and warn if not found.
 #
@@ -2399,16 +2096,50 @@ sub splitPlus {
 
 
 ###############################################################################
-###############################################################################
+# Main (just to show help, or to test).
 #
 if (!caller) {
-    my $path = "/tmp/foo/bar/baz.html";
-    my ($dir, $file, $ext) = sjdUtils::splitPath($path);
-    warn "splitPath on '$path' gives $dir, $file, $ext.\n";
-    my $n = sjdUtils::availableFileName($path);
-    warn "availableFileName on '$path' is $n.\n";
+    use Getopt::Long;
 
-    system "perldoc $0";
+    my $ignoreCase    = 0;
+    my $quiet         = 0;
+    my $split         = 0;
+    my $verbose       = 0;
+    my $wrap          = 0;
+
+    my %getoptHash = (
+        "h|help"                  => sub { system "perldoc $0"; exit; },
+        "i|ignoreCase!"           => \$ignoreCase,
+        "q|quiet!"                => \$quiet,
+        "split!"                  => \$split,
+        "v|verbose+"              => \$verbose,
+        "version"                 => sub {
+            die "Version of $VERSION_DATE, by Steven J. DeRose.\n";
+        },
+        "wrap!"                   => \$wrap
+        );
+    Getopt::Long::Configure ("ignore_case");
+    GetOptions(%getoptHash) || die "Bad options.\n";
+
+    if ($wrap) {                       # test wrap()
+        print("Testing wrap()\n");
+        my $txt = lorem().rtrim() . ".\n\n" . lorem() . "\n";
+        print("\n======= Original:\n$txt\n\n======= Wrapped to 72, ind 2:\n");
+        my $txt2 = wrap($txt, 72, 2);
+        print("$txt2\n=======\n");
+    }
+    elsif ($split) {
+        print("Testing splitPath()\n");
+        my $path = "/tmp/foo/bar/baz.html";
+        my ($dir, $file, $ext) = sjdUtils::splitPath($path);
+        print("splitPath on '$path' gives $dir, $file, $ext.\n");
+        my $n = sjdUtils::availableFileName($path);
+        print("availableFileName on '$path' is $n.\n");
+    }
+    else {                             # No args, just show help
+        system "perldoc $0";
+    }
 }
+
 1;
 

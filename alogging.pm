@@ -585,12 +585,16 @@ sub getPickedColorString {
 } # getPickedColorString
 
 
-sub vPush { MsgPush(@_); }
+sub vPush {
+    MsgPush(@_);
+}
 sub MsgPush {
     $logInfo{msgIndentLevel}++;
     return($logInfo{msgIndentLevel});
 }
-sub vPop { MsgPop(@_); }
+sub vPop {
+    MsgPop(@_);
+}
 sub MsgPop {
     if ($logInfo{msgIndentLevel}>0) { $logInfo{msgIndentLevel}--; }
     return($logInfo{msgIndentLevel});
