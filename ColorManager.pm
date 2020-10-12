@@ -20,26 +20,39 @@ our %metadata = (
 our $VERSION_DATE = $metadata{'modified'};
 
 
-###############################################################################
-
 =pod
 
 =head1 Usage
 
-use ColorManager;
+This Perl package (a Python version is also available)
+provides easier access to ANSI terminal colors. The 8 basic
+colors work for foreground and background in nearly all terminal programs.
+This package also supports a variety of effects such as bold, underline,
+blink, italic, and so on, but exactly which ones work varies quite a bit
+from one terminal program to another.
 
-Provide much easier management of ANSI terminal colors.
+To display a string in bold red type on a white background, do:
 
-If you use my other scripts, you may need to install this and make
-sure Perl can find it via the C<@INC> directory-list
-(part of which is taken from the environment variable C<PERL5LIB> --
-see L<here|"http://stackoverflow.com/questions/2526804">).
+    use ColorManager;
+    print ColorManager::colorize('red/white/bold', "a string");
+
+You can also request the exact escape sequence needed to get to a given
+color (or back to 'default'), like:
+
+    getColorString("blue")
+
+As shown, the returns the appropriate string with a literal ESC (U+0001B) as
+the first character. You can also get strings with "\\e" or other forms,
+since you might want those to paste into C<bash> scripts, etc.
+
+To install this and make
+sure Perl can find it via the C<@INC> directory-list, add the path to
+environment variable C<PERL5LIB> --
+see L<here|"http://stackoverflow.com/questions/2526804">.
 
 B<Note>: If you're using this via C<sjdUtils.pm>,
 then unless you call I<setColors(1)> and I<setVerbose(n)> to enable it,
 you might not get the output you want.
-
-B<Note>: A Python version of this package is also available.
 
 If run directly (rather than used as a library), a small self-test happens,
 or you can show a particular color with I<--color colorName> and/or I<--showAll>.
@@ -47,11 +60,11 @@ or you can show a particular color with I<--color colorName> and/or I<--showAll>
 
 =head2 Color Names
 
-The color names available are defined in F<bingit/SHELL/colorNames.pod>,
+The color names available are described in L<https://github.com/sderose/Color/colorNames.md>,
 which supercedes anything in specific scripts (they I<should> match).
 
 For example, "green" specifies green foreground (type),
-while "bold/red/blue" specifies bold red on a blue background
+while "red/blue/bold" specifies bold red on a blue background
 
 
 =head2 General color methods
@@ -182,6 +195,7 @@ C<colorConvert.py> -- convert string representatins of colors (RGB, etc.).
 
 C<uncolorize> -- remove ANSI color escape from STDIN.<
 
+
 =head1 History
 
 =over
@@ -199,28 +213,26 @@ Sync color w/ python, logging....
 
 =item * 2019-11-16: Improve driver. strict.
 
-=item * 2020-02-18 Clean up.
+=item * 2020-02-18 Clean up. Sync color syntax with doc. Fix --color demo.
 
 =back
+
 
 =head1 To do
 
 =over
-
-=item * Block 'blink' effect if env var NOBLINK is set.
 
 =item * Sync ColorManager API with Python version.
 
 =item * Get rid of rest of refs to %colorStrings. Maybe create escapes on the
 fly from tokens rather than keeping a big list at all.
 
-=item * Remove 256-color stuff?
+=item * Remove or finish 256-color stuff.
 
 =item * Finish different color-sets for dark vs. light bg.
 
-=item * Sync with Python version.
-
 =back
+
 
 =head1 Rights
 
@@ -260,8 +272,8 @@ our %effectNumbers = (
     "faint"      =>  2,
     "italic"     =>  3,
     "ul"         =>  4,  # off = 24. aka underscore, underline
-    "blink"      =>  5, # off = 25. see below
-    "fblink"     =>  6, # see below
+    "blink"      =>  5,  # off = 25. see below
+    "fblink"     =>  6,  # see below
     "inverse"    =>  7,  # off = 27. aka reverse
     "concealed"  =>  8,
     "strike"     =>  9,  # aka strikethru, strikethrough
@@ -600,15 +612,17 @@ if (!caller) {
     print("\nTesting ColorManager.pm...\n");
     setColors(1);
 
-    my @toShow = sort keys %colorNumbers;
+    my @toShow = ();
     if ($colorToShow) {
-        @toShow = ( $colorToShow );
+        warn (sprintf("Sample of '%s': ## %s ##\n",
+            $colorToShow, colorize($colorToShow, "Some text")));
+        exit;
     }
 
     for my $b (@toShow) {
         my $name1 = $b;
         my $name2 = "white/$b";
-        my $name3 = "bold/$b";
+        my $name3 = "$b/bold";
         my $name4 = "$b/white";
         warn (sprintf("## %s ## %s ## %s ## %s ##\n",
             colorize($name1, sprintf("%-14s", $name1)),

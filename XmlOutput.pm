@@ -401,6 +401,8 @@ These options are accessed via I<setOption> and I<getOption> (see above).
 A few special options take lists of element type names as their values.
 Those have separate functions, listed above under L<General Methods>:
 i<setSpace>, i<setInline>, i<setEmpty>, i<setCantRecurse>, i<setSuppress>.
+Those cannot be accessed via I<setOption> and I<getOption> as can the ones
+listed below.
 
 =over
 
@@ -408,7 +410,7 @@ i<setSpace>, i<setInline>, i<setEmpty>, i<setCantRecurse>, i<setSuppress>.
 Default: off.
 
 =item * B<breakSTAGO> -- Break before start-tags.
-Default: on.
+Default: on. See also I<indent>.
 
 =item * B<breakAttrs> -- Break before each attribute.
 Default: off.
@@ -460,6 +462,8 @@ Default: off (that is, use XML style)
 for use with I<trackIDs>. Default: id. (Not yet implemented).
 
 =item * B<indent> -- Pretty-print the XML output. Default: on.
+See also I<breakSTAGO>, I<breakAttrs>, I<breakSTAGC>, I<breakETAGO>,
+I<breakETAGC>, and I<iString>, and the help section [#Indentation].
 
 =item * B<iri> -- Allow non-ASCII characters in URIs. Default: on.
 
@@ -467,6 +471,7 @@ for use with I<trackIDs>. Default: id. (Not yet implemented).
 for pretty-printing. Default: "    " (4 spaces).
 B<Note>: This can also be accessed using I<setIndentString>() and
 I<setIndentString>(), for compatibility with C<ElementManager.pm>.
+This only applies if I<indent>, certain of the I<break...> options, etc.
 
 =item * B<normalizeText> -- Normalize white-space in output text nodes.
 Default: off.
@@ -489,6 +494,29 @@ If the I<iri> option is set, all non-ASCII characters are also allowed.
 Default: "-.\\w\\d_!\$\'()*+".
 
 =back
+
+
+=head2 Indentation
+
+Pretty-printing with newlines and indentation involves several options.
+I<indent> defaults to on, and causes breaks and indentation before
+start-tags (including empty element tags). I<iString> is the string
+to be repeated to create indentation.
+
+You can more tightly control where newlines are inserted, using
+the I<breakSTAGO>, I<breakAttrs>, I<breakSTAGC>, I<breakETAGO>,
+I<breakETAGC> options.
+
+setInlines() can be used to provide a hash of element type names that should
+be considered "inline" (basically in the CSS sense), and not get surrounding
+newlines.
+
+setSpaces() can be used to provide a hash of element type names, each with
+the specific number of newlines to be issued before it (the last of which,
+if any, will be followed by indentation space).
+
+There is presently no way to control indentation more specifically than
+per-element-type.
 
 
 =head1 Known bugs and limitations
@@ -700,32 +728,38 @@ sub openElement {
         }
     }
 
-    my $extra = $self->{spaceSpecs}->{$gi};
-    if (!defined $extra) {
-        $extra = ($self->{breakSTAGO} &&
-                  !defined $self->{inlines}->{$gi}) ? 1:0;
+    # Figure how many newlines before start-tag
+    my $extra = 0;
+    if (defined $self->{spaceSpecs}->{$gi}) {
+        $extra = $self->{spaceSpecs}->{$gi};
+    }
+    elsif (defined $self->{inlines}->{$gi}) {
+        $extra = 0;
+    }
+    elsif ($self->{options}->{breakSTAGO} || $self->{options}->{indent}) {
+        $extra = 1;
     }
     if ($extra>0) {
         $self->makeRawText(("\n" x $extra) . $self->getIndentString(0));
     }
 
+    # Assemble any attributes (including queued ones)
     my $attrCache;
     if (ref($attrs) eq "HASH") { $attrCache = $attrs; }
     elsif ($attrs)             { $attrCache = $self->parseAttrString($attrs); }
     else                       { $attrCache = {}; }
-
     my $qa = $self->getQueuedAttributes();
     for my $a (keys(%{$qa})) {
         $attrCache->{$a} = $qa->{$a};
     }
     $self->clearQueuedAttributes();
 
+    # Assemble the start-tag, and push it if not empty
     my $out = "<$gi";
     for my $a (sort keys(%{$attrCache})) {
         $out .= ($self->{breakAttrs} ? $self->getIndentString(1) : " ") .
             "$a=\"" . $self->escapeXmlAttribute($attrCache->{$a}) . "\"";
     }
-
     if ($makeEmpty) {
         $out .= "/>";
     }
@@ -737,6 +771,7 @@ sub openElement {
         push @{$self->{attrStack}}, $attrCache;
     }
 
+    # Possibly add a newline after end of start-tag
     if ($self->{options}->{breakSTAGC} &&
         !defined $self->{inlines}->{$gi}) { $out .= "\n"; }
     $self->makeRawText($out);
