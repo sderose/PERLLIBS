@@ -1,32 +1,24 @@
 #!/usr/bin/perl -w
 #
 # ElementManager: Maintain XML parser state for various other tools.
-#
 # 2013-01-21: Broken out from FakeParser.pm, Steven J. DeRose.
-# 2013-01-23: Add StackFrame internal package, logTextNode(), logPI(),
-#     logComment, isOpen(), isCurrent(), doStats. Track/check IDs.
-# 2013-09-19: Add packages for AttributeDefinition and ElementDefinition.
-#     Start content-model and tag-omission support. Re-sync w/ XmlOutput.pm.
-#     Drop userData from elementStackFrames.
-#
-# To do:
-#     Namespaces on start vs. end tags.
-#     Make this superclass of XmlOutput.pm?
-#     Integrate element library stuff from YMLParser.pm?
-#     Integrate into XMLUTILS: !!!normalizeXml, !!!YMLParser.pm
-#
-# Low priority:
-#     Make trivial to use atop XML::Parser
-#         Register calls here with XML::Parser, then we call user cb's?
-#     Integrate into anything that uses tagSTack
 #
 use strict;
 use Getopt::Long;
 use Encode;
 
-#use sjdUtils;
-
-our $VERSION_DATE = "1.10";
+our %metadata = (
+    'title'        => "ElementManager.pm",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2013-01-21",
+    'modified'     => "2020-10-15",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
 
 use Exporter;
 our @ISA = qw( Exporter );
@@ -55,9 +47,182 @@ push @EXPORT, qw(
 );
 
 
+=pod
 
-###############################################################################
-###############################################################################
+=head1 Usage
+
+Manage an XML parser or similar application's stack state,
+and test/return various state information.
+Track the cumulative list of defined namespaces.
+
+    use ElementManager;
+    my $es = new ElementManager()
+    $es->openElement("html");
+    $es->openElement("body");
+    $es->openElement("p");
+    # do various stuff, report state, whatever....
+    while ($es->getDepth() > 0) { $es->closeElement(); }
+
+Similar to, but lighter weight than, C<XmlOutput.pm>, which does
+similar tracking for programs that I<generate> XML, and has many more
+features for adjusting the stack to keep things valid (closeToElement,
+closeElementIfOpen, etc.). This doesn't do that much more than just
+a stack of open elements.
+
+
+=head1 Methods
+
+=over
+
+=item * B<setIndentString>(s)
+
+Set the indent string, which is used by I<getCurrentIndent>() to generate
+indentation for pretty-printing.
+
+=item * B<getCurrentIndent>()
+
+Return the current indent string, repeated as many times as the current depth.
+
+=item * B<openElement>(I<self, gi, attributes?>)
+
+This should be called when a start (or empty) tag is parsed.
+It stacks the element, sets or inherits xml:lang and namespaces, etc.
+I<attributes> can be a reference to a hash of name=>value pairs,
+or a literal attribute string, which will be parsed (only the XML predefined
+entities and numeric character references will be expanded in the latter case).
+ID attributes will have their values stored, along with the sequence number
+of the new element (this can be used to check later IDs and IDREFs).
+
+=item * B<closeElement>(I<self, gi?>)
+
+This should be called when a end tag is parsed.
+It pops the information that I<openElement> pushed.
+If I<gi> is supplied but does not match the current element type,
+a warning is issued and nothing is closed.
+
+=item * B<getDepth>() or B<getCurrentDepth>()
+
+Returns the number of open elements.
+
+=item * B<getCurrentFQGI>()
+
+Returns the list of all open element types, separated by "/".
+
+=item * B<getCurrentXPath>(form)
+
+Return an XPointer-style XPath expression that uniquely identifiers the
+current element (sorry, no pointers to text nodes at this time).
+If I<form> is "L", it will be like /*[1][self:DIV]/*[4][self:P]....
+If I<form> is "S", it will be like /*[1]/*[4]....
+Otherwise, it will be like /1/4.... (which is also an XPointer).
+
+=item * B<getCurrentType>I<(n?)> or B<getCurrentElementName>I<(n?)>
+
+Returns the element type name at index I<n> in the open element stack.
+If I<n> is undefined, the current element type is returned .
+I<n> may be positive, negative, or zero.
+Zero is the document element, -1 is the current element.
+If I<n> is out of range, C<undef> is returned.
+
+=item * B<getCurrentLanguage>(n?)
+
+Returns the I<xml:lang> value presently in effect.
+
+=item * B<getCurrentNamespace>(n?)
+
+=item * B<getElementCount>()
+
+How many elements have been seen (opened) in all?
+This is elements, not nodes (thus attributes, namespace nodes,
+pis, comments, and text nodes are not counted).
+
+=item * B<findOpen>(typelist)
+
+Returns true if at least one element of a specified I<type> is open.
+Multiple names in I<typelist> must be separated by spaces (not tabs, etc.).
+
+=item * B<findNOpen>(typelist)
+
+Returns how many elements of any specified I<type>(s) are open.
+Multiple names in I<typelist> must be separated by spaces (not tabs, etc.).
+
+=item * B<findOutermost>(typelist)
+
+Returns the index into the stack of open elements (0 is the document element),
+of the outermost (largest) instance of any of the types listed
+Multiple names in I<typelist> must be separated by spaces (not tabs, etc.).
+
+=back
+
+
+=head1 Known Bugs and Limitations
+
+This doesn't support nearly all the logic for SGML/HTML tag omission.
+Mainly meant for XML.
+
+
+=head1 Related commands
+
+C<FakeParser.pm> -- uses this.
+
+C<XmlOutput.pm> -- similar package, but heavier weight, intended for B<output>
+construction rather than parsing. For example, it provides:
+
+=over
+
+=item * escaping for text, PIs, comments, attributes, URIs, etc.
+
+=item * attribute queuing
+
+=item * much more for pretty-printing (though see also C<sjdUtils::indentXml>).
+
+=item * far more stack manipulations: I<openElementUnlessOpen>,
+I<openElementUnlessCurrent>, I<adjustToRank>, etc.
+
+=item * a notion of 'cantRecurse', which can be used to force an element
+(and any descendants) to close when you try to open a new instance of it.
+
+=back
+
+C<littleParser.py> -- Simple Python XML parser.
+
+
+=head1 History
+
+  2013-01-21: Broken out from FakeParser.pm, Steven J. DeRose.
+  2013-01-23: Add StackFrame internal package, logTextNode(), logPI(),
+logComment, isOpen(), isCurrent(), doStats. Track/check IDs.
+  2013-09-19: Add packages for AttributeDefinition and ElementDefinition.
+Start content-model and tag-omission support. Re-sync w/ XmlOutput.pm.
+Drop userData from elementStackFrames.
+  2020-10-19: New layout.
+
+
+=head1 To do
+      Namespaces on start vs. end tags.
+      Make this superclass of XmlOutput.pm?
+      Integrate element library stuff from YMLParser.pm?
+      Integrate into XMLUTILS: !!!normalizeXml, !!!YMLParser.pm
+
+  Low priority:
+      Make trivial to use atop XML::Parser
+          Register calls here with XML::Parser, then we call user cb's?
+      Integrate into anything that uses tagSTack
+
+
+=head1 Rights
+
+Copyright 2013-01-21 by Steven J. DeRose. This work is licensed under a
+Creative Commons Attribution-Share Alike 3.0 Unported License.
+For further information on this license, see
+L<https://creativecommons.org/licenses/by-sa/3.0>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities> or
+L<https://github.com/sderose>.
+
+=cut
+
+
 ###############################################################################
 #
 package ElementManager;
@@ -205,8 +370,6 @@ sub getCurrentIndent {
 }
 
 
-
-###############################################################################
 ###############################################################################
 #
 sub getCurrentXPath {
@@ -236,7 +399,6 @@ sub getElementCount {
 }
 
 
-###############################################################################
 ###############################################################################
 # Get information about whether a given element type(s) is open.
 #
@@ -286,7 +448,6 @@ sub findNOpen {
 
 
 ###############################################################################
-###############################################################################
 # Construction of other node types -- here we just record them, while
 # XmlOutput.pm actually constructs and outputs them.
 #
@@ -312,8 +473,6 @@ sub logComment {
 }
 
 
-
-###############################################################################
 ###############################################################################
 # Element type and namespaces
 #
@@ -347,7 +506,6 @@ sub mapNamespacePrefix {
 } # mapNamespacePrefix
 
 
-###############################################################################
 ###############################################################################
 # Schema stuff (see also following packages).
 #
@@ -440,9 +598,6 @@ sub canWeOmitOurWayThere  {
 }
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 #
 package AttributeDefinition;
@@ -493,9 +648,6 @@ sub isValueOk {
 }
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 #
 package ElementDefinition;
@@ -538,9 +690,6 @@ sub addAttribute {
 }
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 #
 package ElementStackFrame;
@@ -616,155 +765,3 @@ sub parseAttrString {
 } # parserAttrString
 
 1;
-
-
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-use ElementManager;
-
-Manage an XML parser's stack state, and return various state information.
-Track the cumulative list of defined namespaces.
-
-Similar to, but lighter weight than, C<XmlOutput.pm>, which does
-similar tracking for programs that I<generate> XML, and has many more
-features for adjusting the stack to keep things valid (closeToElement,
-closeElementIfOpen, etc.)
-
-
-
-=head1 Methods
-
-=over
-
-=item * B<setIndentString>(s)
-
-Set the indent string, which is used by I<getCurrentIndent>() to generate
-indentation for pretty-printing.
-
-=item * B<getCurrentIndent>()
-
-Return the current indent string, repeated as many times as the current depth.
-
-=item * B<openElement>(I<self, gi, attributes?>)
-
-This should be called when a start (or empty) tag is parsed.
-It stacks the element, sets or inherits xml:lang and namespaces, etc.
-I<attributes> can be a reference to a hash of name=>value pairs,
-or a literal attribute string, which will be parsed (only the XML predefined
-entities and numeric character references will be expanded in the latter case).
-ID attributes will have their values stored, along with the sequence number
-of the new element (this can be used to check later IDs and IDREFs).
-
-=item * B<closeElement>(I<self, gi?>)
-
-This should be called when a end tag is parsed.
-It pops the information that I<openElement> pushed.
-If I<gi> is supplied but does not match the current element type,
-a warning is issued and nothing is closed.
-
-=item * B<getDepth>() or B<getCurrentDepth>()
-
-Returns the number of open elements.
-
-=item * B<getCurrentFQGI>()
-
-Returns the list of all open element types, separated by "/".
-
-=item * B<getCurrentXPath>(form)
-
-Return an XPointer-style XPath expression that uniquely identifiers the
-current element (sorry, no pointers to text nodes at this time).
-If I<form> is "L", it will be like /*[1][self:DIV]/*[4][self:P]....
-If I<form> is "S", it will be like /*[1]/*[4]....
-Otherwise, it will be like /1/4.... (which is also an XPointer).
-
-=item * B<getCurrentType>I<(n?)> or B<getCurrentElementName>I<(n?)>
-
-Returns the element type name at index I<n> in the open element stack.
-If I<n> is undefined, the current element type is returned .
-I<n> may be positive, negative, or zero.
-Zero is the document element, -1 is the current element.
-If I<n> is out of range, C<undef> is returned.
-
-=item * B<getCurrentLanguage>(n?)
-
-Returns the I<xml:lang> value presently in effect.
-
-=item * B<getCurrentNamespace>(n?)
-
-=item * B<getElementCount>()
-
-How many elements have been seen (opened) in all?
-This is elements, not nodes (thus attributes, namespace nodes,
-pis, comments, and text nodes are not counted).
-
-=item * B<findOpen>(typelist)
-
-Returns true if at least one element of a specified I<type> is open.
-Multiple names in I<typelist> must be separated by spaces (not tabs, etc.).
-
-=item * B<findNOpen>(typelist)
-
-Returns how many elements of any specified I<type>(s) are open.
-Multiple names in I<typelist> must be separated by spaces (not tabs, etc.).
-
-=item * B<findOutermost>(typelist)
-
-Returns the index into the stack of open elements (0 is the document element),
-of the outermost (largest) instance of any of the types listed
-Multiple names in I<typelist> must be separated by spaces (not tabs, etc.).
-
-=back
-
-
-
-=head1 Known Bugs and Limitations
-
-This doesn't support nearly all the logic for SGML/HTML tag omission.
-Mainly meant for XML.
-
-
-=head1 Related commands
-
-C<FakeParser.pm> -- uses this.
-
-C<XmlOutput.pm> -- similar package, but heavier weight, intended for B<output>
-construction rather than parsing. For example, it provides:
-
-=over
-
-=item * escaping for text, PIs, comments, attributes, URIs, etc.
-
-=item * attribute queuing
-
-=item * much more for pretty-printing (though see also C<sjdUtils::indentXml>).
-
-=item * far more stack manipulations: I<openElementUnlessOpen>,
-I<openElementUnlessCurrent>, I<adjustToRank>, etc.
-
-=item * a notion of 'cantRecurse', which can be used to force an element
-(and any descendants) to close when you try to open a new instance of it.
-
-=back
-
-C<littleParser.py> -- Simple Python XML parser.
-
-
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
