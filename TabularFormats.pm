@@ -13,10 +13,6 @@
 #     DataOptions;
 #
 
-###############################################################################
-###############################################################################
-#
-
 =pod
 
 =head1 Usage
@@ -104,8 +100,6 @@ Handles all of the (many) TabularFormats options.
 If stores and retrieves them, and provides a method to add them all
 to a C<Getopt::Long> setup.
 
-
-=for nobody ===================================================================
 
 =head1 TabularFormats Methods and Options
 
@@ -198,8 +192,6 @@ that file as well.
 
 =back
 
-
-=for nobody ===================================================================
 
 =head2 General Options
 
@@ -366,10 +358,6 @@ use numeric character references for those 5 characters).
 =back
 
 
-
-=for nobody ===================================================================
-=for nobody ===================================================================
-
 =head2 Methods for operating on actual records
 
 The main actions you can take are at the level of records: you can I<read>,
@@ -407,8 +395,6 @@ and I<readRecord>() methods.
 =back
 
 
-=for nobody ===================================================================
-
 =head2 Input (non-parsing) methods
 
 =over
@@ -423,9 +409,6 @@ under L<"Supported formats, with examples">
 
 =back
 
-
-
-=for nobody ===================================================================
 
 =head2 Input parsing methods
 
@@ -487,8 +470,6 @@ names will be utomatically assigned as fields ar encountered.
 =back
 
 
-=for nobody ===================================================================
-
 =head2 SAX-style API
 
 =over
@@ -526,8 +507,6 @@ will correspond to the structure you'd get if you used I<parse_more>.
 
 =back
 
-
-=for nobody ===================================================================
 
 =head2 Output assembly methods
 
@@ -572,8 +551,6 @@ I<setFieldNamesFromArray>(), and/or I<setFieldName>().
 =back
 
 
-
-=for nobody ===================================================================
 
 =head1 Supported formats
 
@@ -802,9 +779,6 @@ For example:
   </Head>
 
 
-
-=for nobody ===================================================================
-
 =head1 Managing options
 
 =over
@@ -829,8 +803,6 @@ Returns: The number of options added.
 
 =back
 
-
-=for nobody ===================================================================
 
 =head1 Related commands
 
@@ -895,8 +867,6 @@ I<And which handle Unicode?>
 
 CSV: https://metacpan.org/pod/Text::CSV_XS -- looks strong; awkward for \\n.
 
-
-=for nobody ===================================================================
 
 =head1 Known bugs and limitations
 
@@ -1825,9 +1795,9 @@ sub TabularFormats::readAndParseHeader {
 # Skips comments, should only stop at real records.
 sub TabularFormats::readRecord {
     my ($self) = @_;
-    alogging::vMsg(1, "$tf:readRecord. impl: ", ref($self->{formatImpl}));
+    #alogging::vMsg(2, "$tf:readRecord. impl: ", ref($self->{formatImpl}));
     my $rec = $self->{formatImpl}->readRecord();
-    alogging::vMsg(1, "$tf:readRecord: Got logical rec:\n  ", $rec);
+    #alogging::vMsg(2, "$tf:readRecord: Got logical rec:\n  ", $rec);
     return($rec);
 }
 

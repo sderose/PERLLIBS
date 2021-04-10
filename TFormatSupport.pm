@@ -1463,7 +1463,7 @@ sub assembleField { # PERL
     if ($value !~ m/^[-+]?\d+(\.\d+)?(E[-+]\d+)?/) {
         $value =~ s/([\\"])/\\$1/g;
         if ($self->getOption("ASCII")) {
-            $value =~ s/([^[:ascii]])/{ sprintf("\u%04d", ord($1)); }/ge;
+            $value =~ s/([^[:ascii:]])/{ sprintf("\u%04d", ord($1)); }/ge;
         }
         $value = '"' . $value . '"';
     }

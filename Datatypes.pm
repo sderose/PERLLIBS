@@ -1,31 +1,232 @@
 #!/usr/bin/perl -w
 #
 # Datatypes.pm: Package to help with XSD datatype checking.
-#
 # 2012-04-24: Written by Steven J. DeRose.
-# 2012-04-30 sjd: Handle 0x in datatype specs. Actually check ENUM and
-#     new STRING. Check REGEX. Add 'scream' parameter to check,
-#     and issue specific error messages. Add types for some sets of chars.
-# 2012-05-23 sjd: Drop XmlTuples to avoid circular dependency.
-# 2012-05-31 sjd: Fix REGEX.
-# 2012-06-08ff sjd: Change [arg] or \targ to (arg). Improve parsing of it.
-#     Allow /[\s\|]+/ between ENUM tokens.
-#     normalizeData(type, raw)? At least string, bool, baseint.
-# 2012-06-14 sjd: Add 'rep arg to checkValueForType().
-# 2012-11-26 sjd: Clean up.
-#
-# To do:
-#     Perhaps add File, Directory, WFile, Rfile
-#     addType()?
-#     conversions to/from ctime?
-#     methods to define/delete types?
-#     Make nonPositiveInteger and nonNegativeInteger deal with -0.
 #
 use strict;
 
-our $VERSION_DATE = "0.83";
+our %metadata = (
+    'title'        => "Datatypes.pm",
+    'description'  => "Package to help with XSD datatype checking.",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2012-04-24",
+    'modified'     => "2020-11-22",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
 
 package Datatypes;
+
+=pod
+
+=head1 Usage
+
+Type-checking for the XSD built-in datatypes, plus a few others.
+
+  use Datatypes;
+  my $dt = new Datatypes();
+  ...
+  if ($dt->checkValueForType("typename", "!", $value)) { ... }
+
+Values are checked for lexical form, and numeric types are also
+checked for min and max values. The second argument should be "?" if a nil
+value is acceptable, otherwise "!" ("*" and "+" will likely be added).
+
+
+=head1 Supported XSD built-in types
+
+=over
+
+=item * B<Truth values>:
+I<boolean>.
+
+=item * B<Real numbers>:
+I<decimal>, I<double>, I<float>.
+
+=item * B<Integers>:
+I<byte>, I<int>, I<short>, I<integer>, I<long>,
+I<nonPositiveInteger>, I<negativeInteger>,
+I<nonNegativeInteger>, I<positiveInteger>,
+I<unsignedByte>, I<unsignedShort>, I<unsignedInt>, I<unsignedLong>.
+
+=item * B<Dates and times>:
+I<date>, I<dateTime>, I<time>, I<duration>,
+I<gDay>, I<gMonth>, I<gMonthDay>, I<gYear>, I<gYearMonth>.
+
+=item * B<Strings>:
+I<language>, I<normalizedString>, I<string>, I<token> .
+
+=item * B<XML constructs>:
+I<NMTOKEN>, I<NMTOKENS>, I<Name>, I<NCName>,
+I<ID>, I<IDREF>, I<IDREFS>, I<ENTITY>, I<ENTITIES>, I<QName>.
+
+=item * B<Net constructs>:
+I<anyURI>, I<base64Binary>, I<hexBinary>.
+
+=back
+
+
+=head1 The extended types
+
+Besides the XSD built-in types, this script supports several
+other types, all of which begin with "". The first two require
+a parenthesized argument following the basic type name (the parentheses
+are I<permitted> after all typenames for consistency of syntax).
+
+=over
+
+=item * I<ENUM(X Y...)>
+
+The value must be one of the (case-sensitive) space-separated XML NAME values
+listed in the argument.
+
+=item * B<STRING(regex)>
+
+Acceptable values are any strings that match the regular expression argument.
+Not to be confused with I<REGEX>.
+
+=back
+
+The remaining I<> types are described below.
+
+=over
+
+=item * I<REGEX>
+
+Acceptable values must I<be> regular expressions (tested by C<eval()>)
+Not to be confused with I<STRING>.
+
+=item * I<ASCII>
+
+An ASCII string.
+
+=item * I<BASEINT>
+
+An integer in hexadecimal (0xFFFF), octal (0777), or decimal (999).
+
+=item * I<UChar> a single Unicode character.
+
+=item * I<XmlNameChar> a single Unicode XML name character
+(this is slightly too loose at present, allows all \w chars).
+
+=item * I<XmlNameStart> a single Unicode XML name start character
+(this is slightly too loose at present, allows all \w chars).
+
+=item * I<LatinLetter> a single Latin letter: [a-zA-Z].
+
+=item * I<LatinLower> a single lower-case Latin letter: [a-z].
+
+=item * I<LatinUpper> a single upper-case Latin letter: [A-Z].
+
+=item * I<Digit> a single Arabic digit: [0-9].
+
+=back
+
+
+=head1 Methods
+
+=over
+
+=item * B<new>()
+
+Create a new instance.
+
+=item * B<checkValueForType>(typeName, rep, value, report)
+
+Returns whether the I<value> is ok for the I<typeName>.
+If I<rep> is "?" or "*", an empty I<value> is also acceptable.
+If I<report> is present, it determines whether datatype violations will be
+reported via I<warn> (otherwise, reporting is controlled by the I<scream>
+option).
+
+=item * B<isXSD>(name)
+
+Return whether the datatype I<name> is a built-in XSD one, or not.
+
+=item * B<isNumericDatatype>(name)
+
+Return whether the named datatype is a numeric datatype.
+An ENUM or STRING does not count as numeric even if it can only
+match data that could reasonably be interpreted as numeric.
+
+=item * B<isWSNormalizable>
+
+Return whether the type can safely have white-space normalized a la XML.
+
+=item * B<isKnownDatatype>(name)
+
+Return whether the type is actually known.
+
+=item * B<getKnownDatatypes>()
+
+Return a reference to an array of all the known datatype names.
+
+=item * B<normalize>(name, value)
+
+Normalizes the form of the given I<value>, according to the normalization
+rules for the type I<name>. For example, booleans always return 0 or 1;
+BASEINTs are converted to decimal; most string types have whitespace
+normalized, etc.
+
+=back
+
+
+=head1 Known Bugs and Limitations
+
+Doesn't check all types completely thoroughly.
+
+Doesn't know exactly the right set of characters for XML Names (uses \w).
+
+This isn't really maintained. See C<Datatypes.py>.
+
+
+=head1 Related commands
+
+My C<TabularFormats.pm> and I<XmlTuples.pm> use this.
+But all those are obsolescent.
+
+CPAN C<SOAP::WSDL::XSDLLTypelib::Builtin> (not used here),
+provides classes corresponding to each XSD built-in type.
+
+
+=head1 History
+
+  2012-04-24: Written by Steven J. DeRose.
+  2012-04-30 sjd: Handle 0x in datatype specs. Actually check ENUM and
+new STRING. Check REGEX. Add 'scream' parameter to check,
+and issue specific error messages. Add types for some sets of chars.
+  2012-05-23 sjd: Drop XmlTuples to avoid circular dependency.
+  2012-05-31 sjd: Fix REGEX.
+  2012-06-08ff sjd: Change [arg] or \targ to (arg). Improve parsing of it.
+Allow /[\s\|]+/ between ENUM tokens.
+normalizeData(type, raw)? At least string, bool, baseint.
+  2012-06-14 sjd: Add 'rep arg to checkValueForType().
+  2012-11-26 sjd: Clean up.
+  2020-11-22: New Layout.
+
+
+=head1 To do
+
+  Perhaps add File, Directory, WFile, Rfile
+  addType()?
+  conversions to/from ctime?
+  methods to define/delete types?
+  Make nonPositiveInteger and nonNegativeInteger deal with -0.
+
+
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons
+Attribution-Share Alike 3.0 Unported License. For further information on
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+=cut
 
 
 ###############################################################################
@@ -338,209 +539,4 @@ sub normalize {
     return($value);
 }
 
-
 1;
-
-
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-Type-checking for the XSD built-in datatypes, plus a few others.
-
-  use Datatypes;
-  my $dt = new Datatypes();
-  ...
-  if ($dt->checkValueForType("typename", "!", $value)) { ... }
-
-Values are checked for lexical form, and numeric types are also
-checked for min and max values. The second argument should be "?" if a nil
-value is acceptable, otherwise "!" ("*" and "+" will likely be added).
-
-
-
-=for nobody ###################################################################
-
-=head1 Supported XSD built-in types
-
-=over
-
-=item * B<Truth values>:
-I<boolean>.
-
-=item * B<Real numbers>:
-I<decimal>, I<double>, I<float>.
-
-=item * B<Integers>:
-I<byte>, I<int>, I<short>, I<integer>, I<long>,
-I<nonPositiveInteger>, I<negativeInteger>,
-I<nonNegativeInteger>, I<positiveInteger>,
-I<unsignedByte>, I<unsignedShort>, I<unsignedInt>, I<unsignedLong>.
-
-=item * B<Dates and times>:
-I<date>, I<dateTime>, I<time>, I<duration>,
-I<gDay>, I<gMonth>, I<gMonthDay>, I<gYear>, I<gYearMonth>.
-
-=item * B<Strings>:
-I<language>, I<normalizedString>, I<string>, I<token> .
-
-=item * B<XML constructs>:
-I<NMTOKEN>, I<NMTOKENS>, I<Name>, I<NCName>,
-I<ID>, I<IDREF>, I<IDREFS>, I<ENTITY>, I<ENTITIES>, I<QName>.
-
-=item * B<Net constructs>:
-I<anyURI>, I<base64Binary>, I<hexBinary>.
-
-=back
-
-
-
-=for nobody ###################################################################
-
-=head1 The extended types
-
-Besides the XSD built-in types, this script supports several
-other types, all of which begin with "". The first two require
-a parenthesized argument following the basic type name (the parentheses
-are I<permitted> after all typenames for consistency of syntax).
-
-=over
-
-=item * I<ENUM(X Y...)>
-
-The value must be one of the (case-sensitive) space-separated XML NAME values
-listed in the argument.
-
-=item * B<STRING(regex)>
-
-Acceptable values are any strings that match the regular expression argument.
-Not to be confused with I<REGEX>.
-
-=back
-
-The remaining I<> types are described below.
-
-=over
-
-=item * I<REGEX>
-
-Acceptable values must I<be> regular expressions (tested by C<eval()>)
-Not to be confused with I<STRING>.
-
-=item * I<ASCII>
-
-An ASCII string.
-
-=item * I<BASEINT>
-
-An integer in hexadecimal (0xFFFF), octal (0777), or decimal (999).
-
-=item * I<UChar> a single Unicode character.
-
-=item * I<XmlNameChar> a single Unicode XML name character
-(this is slightly too loose at present, allows all \w chars).
-
-=item * I<XmlNameStart> a single Unicode XML name start character
-(this is slightly too loose at present, allows all \w chars).
-
-=item * I<LatinLetter> a single Latin letter: [a-zA-Z].
-
-=item * I<LatinLower> a single lower-case Latin letter: [a-z].
-
-=item * I<LatinUpper> a single upper-case Latin letter: [A-Z].
-
-=item * I<Digit> a single Arabic digit: [0-9].
-
-=back
-
-
-
-=for nobody ###################################################################
-
-=head1 Methods
-
-=over
-
-=item * B<new>()
-
-Create a new instance.
-
-=item * B<checkValueForType>(typeName, rep, value, report)
-
-Returns whether the I<value> is ok for the I<typeName>.
-If I<rep> is "?" or "*", an empty I<value> is also acceptable.
-If I<report> is present, it determines whether datatype violations will be
-reported via I<warn> (otherwise, reporting is controlled by the I<scream>
-option).
-
-=item * B<isXSD>(name)
-
-Return whether the datatype I<name> is a built-in XSD one, or not.
-
-=item * B<isNumericDatatype>(name)
-
-Return whether the named datatype is a numeric datatype.
-An ENUM or STRING does not count as numeric even if it can only
-match data that could reasonably be interpreted as numeric.
-
-=item * B<isWSNormalizable>
-
-Return whether the type can safely have white-space normalized a la XML.
-
-=item * B<isKnownDatatype>(name)
-
-Return whether the type is actually known.
-
-=item * B<getKnownDatatypes>()
-
-Return a reference to an array of all the known datatype names.
-
-=item * B<normalize>(name, value)
-
-Normalizes the form of the given I<value>, according to the normalization
-rules for the type I<name>. For example, booleans always return 0 or 1;
-BASEINTs are converted to decimal; most string types have whitespace
-normalized, etc.
-
-=back
-
-
-
-=for nobody ###################################################################
-
-=head1 Known Bugs and Limitations
-
-Doesn't check all types completely thoroughly.
-
-Doesn't know exactly the right set of characters for XML Names (uses \w).
-
-
-
-=for nobody ###################################################################
-
-=head1 Related commands
-
-My C<TabularFormats.pm> and I<XmlTuples.pm> use C<Datatypes.pm>.
-
-CPAN C<SOAP::WSDL::XSDLLTypelib::Builtin> (not used here),
-provides classes corresponding to each XSD built-in type.
-
-
-
-=for nobody ###################################################################
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
