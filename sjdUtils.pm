@@ -1049,7 +1049,7 @@ my $xnmtoken = qr/^[$xmlNameCharExpr]*$/;
 ###############################################################################
 # REMOVE, NOW IN alogging.pm
 #
-sub XutilWarn { # For our own warnings if any
+sub utilWarn { # For our own warnings if any
     my ($m1, $m2) = @_;
     if (!$m1) { $m1 = ""; }
     if (!$m2) { $m2 = ""; }
@@ -1500,7 +1500,10 @@ sub toHNumber {
     for (my $i=scalar(@bits)-1; $i>0; $i--) {
         my $factor = ($use1000) ?
             (1000**$i) : (1 << (10*$i));
-        if ($n > $factor) {
+        if ($factor == 0) {
+            $rc = $n;
+        }
+        elsif ($n > $factor) {
             $rc = sprintf($format, $n / $factor, $bits[$i]);
             last;
         }

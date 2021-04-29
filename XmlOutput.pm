@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# XmlOutput.pm
+# XmlOutput.pm: API to help sequentiually write valid XML.
 # Written 2010-12-22 by Steven J. DeRose.
 #
 use strict;
@@ -11,6 +11,7 @@ our @ISA = qw( Exporter );
 
 our %metadata = (
     'title'        => "XmlOutput.pm",
+    'description'  => "API to help sequentiually write valid XML.",
     'rightsHolder' => "Steven J. DeRose",
     'creator'      => "http://viaf.org/viaf/50334488",
     'type'         => "http://purl.org/dc/dcmitype/Software",
@@ -720,7 +721,11 @@ sub reset {
 # Generate markup (basic)
 #
 sub openElement {
-    my ($self, $gi, $attrs, $makeEmpty) = @_;
+    my ($self,
+        $gi,                 # Element type name
+        $attrs,              # Hash of attributes
+        $makeEmpty           # Use empty-element syntax?
+        ) = @_;
 
     if ($self->{cantRecurse}->{$gi}) {
         while($self->howManyAreOpen($gi) > 0) {
