@@ -1,41 +1,7 @@
 #!/usr/bin/perl -w
 #
 # DomExtensions -- useful methods on top of XML::DOM.
-#
-# Can't easily make this a subclass of Node, since as we traverse, none
-# of the existing Nodes returned by XML::DOM calls will be one of us.
-# would overriding createXXX be enough?
-#
 # Written 2010-04-01~23 by Steven J. DeRose.
-# 2010-10-08 sjd: Convert to a real package, normalize naming.
-# 2011-04-01 sjd: Need to check sync w/ Mac version. Add export().
-# 2011-05-16 sjd: Support many more node types in export().
-# 2011-05-26 sjd: Swap test for escaping just XML, or also to ASCII.
-#     Consistent case for XPointer methods.
-# 2011-05-31 sjd: Add @EXPORT, forEachTextNode(), forEachElement(),
-#     forEachElementOfType()
-#     Get rid of extra initial delim from collectAllText(). Start making
-#     export support DTD type nodes. Fix escapeXmlContent().
-# 2011-06-01 sjd: Improve collectAllXml(), combine HTML display types,
-#     mergeWithFollowingSiblingText().
-# 2011-06-03 sjd: Add insertPrecedingSibling(), insertFollowingSibling(),
-#     insertParent().
-# 2011-08-22 sjd: Improve collectAllXml().
-# 2012-09-25 sjd: Qualify DOM node-type constants.
-#
-# To do:
-#     Rewrite to wrap constructor, and then use ISA to pass things along?
-#        Which DOM calls need to be overridden? Any that construct nodes....
-#           new, parsefile, node (subtypes, too?)
-#     Integrate collect/export/tostring/etc. with emitter.
-#     Add insertPrecedingSibling, insertFollowingSibling, insertParent,
-#         insertAfter
-#     Add moveElementToAttribute (like for OA name/value)
-#     Implement splitNode (see doc)
-#     Move in matchesToElements from mediaWiki2HTML
-#     Find next node of qgi?
-#     Add output options, perhaps via xmlOutput.pm?
-#     SAX-parse the DOM.
 #
 use strict;
 use warnings;
@@ -47,6 +13,348 @@ use Exporter; # Make sub(s) available outside without prefix.
 use DtdKnowledge;
 
 our $VERSION_DATE = "2.00";
+
+
+=pod
+
+=head1 Notes
+
+An XML-manipulation package that sits on top of XML::DOM
+and provides higher-level, XPath-like methods.
+
+B<Note>: These routines do not hang off an object, since there's no easy
+way to get XML::DOM objects to inherit them, or to get XML::DOM constructors
+to create our objects.
+So instead of $node->getFQGI(), etc, use getFQGI($node).
+
+It's very often useful to walk around the XPath 'axes' in a DOM tree.
+When doing so, it's often useful to consider only element nodes,
+or only #text nodes, or only element nodes of a certain element type, or
+with a certain attribute or attribute-value pair.
+
+=head2 Node-selection methods
+
+For the relevant XPath axes there are methods that will return the n-th
+node of a given type and/or attribute along that axis.
+For example (using the Child axis, but you can substitute
+Descendant, PrecedingSibling, FollowingSibling, Preceding, Following,
+or Ancestor:
+
+    selectChild(node,n,type,attributeName,attributeValue)
+
+This will return the I<n>th child of I<node> which:
+is of the given element I<type>,
+and has the given I<attributeName>=I<attributeValue> pair.
+
+=over
+
+=item * I<n> must currently be positive, though using negative numbers
+to count back from the end will likely be added.
+
+=item * If I<type> is undefined or '', any node type is allowed;
+if it is '*', any *element* is allowed
+(in both cases, attribute constraints may still apply).
+
+=item * If I<attributeName> is undefined or '', no attribute is required.
+
+=item * If I<attributeValue> is undefined or '', the attribute named
+by I<attributeName> must be present, but may have any value (including '').
+
+The self, ancestor-or-self, descendant-or-self, attribute, and namespace
+axes are I<not> supported for I<select>.
+
+This is far
+less power than XPath provides, but it facilitates many programming tasks,
+such as scanning for all elements of a given type (which I deem very common).
+
+=back
+
+=head2 Tree information methods
+
+=over
+
+=item * B<getInheritedAttribute(node,name)>
+
+Return the value of attribute I<name>, from the first node along the
+I<ancestor-or-self> axis of I<node> that specifies it.
+Thus, the attribute's value is inherited down the tree, similar to I<xml:lang>.
+
+=item * B<getLeftBranch>(node)
+
+Return the leftmost descendant of I<node>.
+If I<node>'s first child has no children of its own, then it is
+also I<node>'s first descendant; otherwise, it will not be.
+
+=item * B<getRightBranch>(node)
+
+Return the rightmost (last) descendant of I<node>.
+
+=item * B<getDepth>(node)
+
+Return how deeply nested I<node> is (the document element is I<1>).
+
+=item * B<isWithin>(I<node>, I<type>)
+
+Return 1 if I<node> is, or is within, an element of the given I<type>;
+otherwise return 0.
+
+=item * B<getFQGI>(node)
+
+Return the list of element types of I<node>'s
+ancestors, from the root down, separated by '/'.
+For example, "html/body/div/ul/li/p/b".
+B<Note>: An FQGI does I<not> identify a specific element instance or location
+in a document; for that, see I<getXPointer>().
+
+=item * B<getXPointer>(node)
+
+Return the XPointer child sequence to I<node>.
+That is, the list of child-numbers for all the ancestors of the node, from
+the root down, separated by '/'. For example, "1/1/5/2/1".
+This is a fine unique name for the node's location in the document.
+
+=item * B<XPointerCompare(x1,x2)>
+
+Compare two XPointer child-sequences (see I<getXPointer>)
+for relative document order, returning -1, 0, or 1.
+This does not require actually looking at a document, so no document or
+node is passed.
+
+=item * B<nodeCompare(n1,n2)>
+
+Compare two nodes for document order, returning -1, 0, or 1.
+
+=item * B<XPointerInterpret(document,x)>
+
+Interpret the XPointer child sequence in the string
+I<x>, in the context of the given I<document>,
+and return the node it identifies (or undef if there is no such node).
+
+=item * B<getEscapedAttributeList>(node)
+
+Return the entire attribute list for
+I<node>, as needed to go within a XML start-tag. The attributes will be
+quoted using the double-quote character ('"'), and any <, &, or " in them
+will be replaced by the appropriate XML predefined charcter reference.
+
+=back
+
+=head2 Large-scale tree operations
+
+=over
+
+=item * B<deleteWhiteSpaceNodes>(node)
+
+Delete all white-space-only text nodes that are descendants of I<node>.
+
+=item * B<normalizeAllSpace>(node)
+
+Do the equivalent of XSLT normalize-space()
+on all text nodes in the subtree headed at I<node>.
+B<Note>: This is I<not> the same as the XML::DOM::normalize() method, which
+instead combines adjacent text nodes.
+
+=item * B<insertPrecedingSibling>(I<node, newNode>)
+
+=item * B<insertFollowingSibling>(I<node, newNode>)
+
+=item * B<insertParent>(I<node, type>)
+
+=item * B<mergeWithFollowingSiblingText>(node)
+
+The following-sibling of I<node> is deleted, but its text content
+is appended to I<node>.
+This drops any sub-structure of the current and sibling.
+New. See also the C<diffCorefs> command.
+
+=item * B<groupSiblings(node1,node2,typeForNewParent)>
+
+Group all the nodes from I<node1> through I<node2> together, under a
+new node of type I<typeForNewParent>. Fails if the specified nodes are
+not siblings or are not defined.
+
+=item * B<promoteChildren>(node)
+
+Remove I<node> but keep all its children, which becomes siblings at the same
+place where I<node> was.
+
+=item * B<splitNode>(node, childNode, offset)
+
+Breaks I<node> into 2 new sibling nodes of the same type.
+The children preceding and including node I<childNode> end up
+under the first resulting sibling node; the rest under the second.
+However, if I<childNode> is a text node and I<offset> is provided,
+then I<childNode> will also be split, with the characters preceding and
+including I<offset> (counting from 1) becoming a final text node under
+the first new sibling node, and the rest become an initial text node
+under the second.
+(not yet supported)
+
+=item * B<forEachNode(node,preCallback,postCallback)>
+
+Traverse the subtree headed at I<node>,
+calling the callbacks before and after traversing each node's subtree.
+
+=item * B<forEachTextNode(node,preCallback,postCallback)>
+
+Like I<forEachNode>(), but callbacks are I<only> called when at text nodes.
+
+=item * B<forEachElement(node,preCallback,postCallback)>
+
+Like I<forEachNode>(), but callbacks are I<only> called when at element nodes.
+
+=item * B<forEachElementOfType(node,type,preCallback,postCallback)>
+
+Like I<forEachNode>(), but callbacks are I<only> called when at
+element nodes whose type name matches I<type> (which may be a regex).
+
+=item * B<collectAllText(node,delimiter)>
+
+Concatenate together the content of
+all the text nodes in the subtree headed at I<node>,
+putting I<delimiter> in between.
+
+=item * B<collectAllXml2>(node,delimiter,useDtdInformation,inlines)
+
+(newer version, in testing)
+
+=item * B<collectAllXml>(node,delimiter,useDtdInformation,inlines)
+
+Generate the XML representation for the subtree headed at I<node>.
+It knows about elements, attributes, pis, comments, and appropriate escaping.
+However, it won't do anything for CDATA sections (other than escape as
+normal text), XML Declaration, DOCTYPE, or any DTD nodes.
+
+If I<delimiter> contains a newline, the subtree
+will include newlines and indentation.
+
+If I<useDtdInformation> is true, HTML-specific element information
+from HtmlKnowledge.xsv via C<DtdKnowledge.pm>
+will be used to help with pretty-printing and empty-tag generation.
+
+=item * B<export(element, fileHandle, includeXmlDecl, includeDoctype)>
+
+Save the subtree headed at I<element> to the I<fileHandle>.
+If I<includeXmlDecl> is present and true, start with an XML declaration.
+If I<includeDoctype> is present and true, include a DOCTYPE declaration,
+using I<element>'s type as the document-element name, and include any
+DTD information that was available in the DOM (unfinished).
+See also XML::DOM::Node::toString(),
+XML::DOM::Node::printToFile(), XML::DOM::Node::printToFileHandle().
+
+=back
+
+=head2 Index (internal package)
+
+=over
+
+=item * B<buildIndex>(attributeName)
+
+Return a hash table in which each
+entry has the value of the specified I<attributeName> as key, and the element on
+which the attribute occurred as value. This is similar to the XSLT 'key'
+feature.
+
+=item * B<find(value)>
+
+=back
+
+=head2 Character stuff (internal package)
+
+(also available in I<SimplifyUnicode.pm>)
+
+=over
+
+=item * B<escapeXmlAttribute(string)>
+
+Escape the string as needed for it to
+fit in an attribute value (amp, lt, and quot).
+
+=item * B<escapeXmlContent(string)>
+
+Escape the string as needed for it to
+fit in XML text content (amp, lt, and gt when following ']]').
+
+=item * B<escapeASCII(string)>
+
+Escape the string as needed for it to
+fit in XML text content, *and* recodes and non-ASCII characters as XML
+numeric characters references.
+
+=item * B<unescapeXml(string)>
+
+Change XML numeric characters references, as
+well as references to the 5 pre-defined XML named entities, into the
+corresponding literal characters.
+
+=back
+
+
+=head1 Related commands
+
+C<SimplifyUnicode.pm> -- Reduces variations on Roman characters, ligatures,
+dashes, whitespace charadters, quotes, etc. to more basic forms.
+
+C<fakeParser.pm> -- a mostly-conforming XML/HTML parser, but able to survive
+most WF errors and correct some. Supports push and pull interface, essentially
+SAX.
+
+C<xmlOutput.pm> -- Makes it easy to produce WF XML output. Provides methods
+for escaping data correctly for each relevant context; knows about character
+references, namespaces, and the open-element context; has useful methods for
+inferring open and close tags to keep things in sync.
+
+C<DtdKnowledge.pm> -- Provides pretty-printing specs for I<collectAllXml>().
+
+
+=head1 To do
+
+    Rewrite to wrap constructor, and then use ISA to pass things along?
+       Which DOM calls need to be overridden? Any that construct nodes....
+          new, parsefile, node (subtypes, too?)
+    Integrate collect/export/tostring/etc. with emitter.
+    Add insertPrecedingSibling, insertFollowingSibling, insertParent,
+        insertAfter
+    Add moveElementToAttribute (like for OA name/value)
+    Implement splitNode (see doc)
+    Move in matchesToElements from mediaWiki2HTML
+    Find next node of qgi?
+    Add output options, perhaps via xmlOutput.pm?
+    SAX-parse the DOM.
+    Can't easily make this a subclass of Node, since as we traverse, none
+of the existing Nodes returned by XML::DOM calls will be one of us.
+would overriding createXXX be enough?
+
+
+=head1 History
+
+    2010-04-01~23: Written by Steven J. DeRose.
+    2010-10-08 sjd: Convert to a real package, normalize naming.
+    2011-04-01 sjd: Need to check sync w/ Mac version. Add export().
+    2011-05-16 sjd: Support many more node types in export().
+    2011-05-26 sjd: Swap test for escaping just XML, or also to ASCII.
+Consistent case for XPointer methods.
+    2011-05-31 sjd: Add @EXPORT, forEachTextNode(), forEachElement(), forEachElementOfType()
+Get rid of extra initial delim from collectAllText(). Start making
+export support DTD type nodes. Fix escapeXmlContent().
+    2011-06-01 sjd: Improve collectAllXml(), combine HTML display types,
+mergeWithFollowingSiblingText().
+    2011-06-03 sjd: Add insertPrecedingSibling(), insertFollowingSibling(), insertParent().
+    2011-08-22 sjd: Improve collectAllXml().
+    2012-09-25 sjd: Qualify DOM node-type constants.
+    2021-07-20: Partial sync w/ Python version.
+
+
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons
+Attribution-Share Alike 3.0 Unported License. For further information on
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+=cut
+
 
 our @ISA = qw( Exporter );
 our @EXPORT = qw(
@@ -1112,7 +1420,6 @@ sub normalizeSpace {
 
 
 ###############################################################################
-###############################################################################
 #
 package emitter;
 
@@ -1171,7 +1478,6 @@ sub lastCharEmitted {
 
 
 ###############################################################################
-###############################################################################
 # Index should be a separate object.
 # Adds every element that has a given attribute, to a hash, keyed on that
 # attribute's value. Hopes the values are unique.
@@ -1205,320 +1511,3 @@ sub find {
     return($index{$avalue});
 }
 
-
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Notes
-
-An XML-manipulation package that sits on top of XML::DOM
-and provides higher-level, XPath-like methods.
-
-B<Note>: These routines do not hang off an object, since there's no easy
-way to get XML::DOM objects to inherit them, or to get XML::DOM constructors
-to create our objects.
-So instead of $node->getFQGI(), etc, use getFQGI($node).
-
-It's very often useful to walk around the XPath 'axes' in a DOM tree.
-When doing so, it's often useful to consider only element nodes,
-or only #text nodes, or only element nodes of a certain element type, or
-with a certain attribute or attribute-value pair.
-
-=head2 Node-selection methods
-
-For the relevant XPath axes there are methods that will return the n-th
-node of a given type and/or attribute along that axis.
-For example (using the Child axis, but you can substitute
-Descendant, PrecedingSibling, FollowingSibling, Preceding, Following,
-or Ancestor:
-
-    selectChild(node,n,type,attributeName,attributeValue)
-
-This will return the I<n>th child of I<node> which:
-is of the given element I<type>,
-and has the given I<attributeName>=I<attributeValue> pair.
-
-=over
-
-=item * I<n> must currently be positive, though using negative numbers
-to count back from the end will likely be added.
-
-=item * If I<type> is undefined or '', any node type is allowed;
-if it is '*', any *element* is allowed
-(in both cases, attribute constraints may still apply).
-
-=item * If I<attributeName> is undefined or '', no attribute is required.
-
-=item * If I<attributeValue> is undefined or '', the attribute named
-by I<attributeName> must be present, but may have any value (including '').
-
-The self, ancestor-or-self, descendant-or-self, attribute, and namespace
-axes are I<not> supported for I<select>.
-
-This is far
-less power than XPath provides, but it facilitates many programming tasks,
-such as scanning for all elements of a given type (which I deem very common).
-
-=back
-
-
-=head2 Tree information methods
-
-=over
-
-=item * B<getInheritedAttribute(node,name)>
-
-Return the value of attribute I<name>, from the first node along the
-I<ancestor-or-self> axis of I<node> that specifies it.
-Thus, the attribute's value is inherited down the tree, similar to I<xml:lang>.
-
-=item * B<getLeftBranch>(node)
-
-Return the leftmost descendant of I<node>.
-If I<node>'s first child has no children of its own, then it is
-also I<node>'s first descendant; otherwise, it will not be.
-
-=item * B<getRightBranch>(node)
-
-Return the rightmost (last) descendant of I<node>.
-
-=item * B<getDepth>(node)
-
-Return how deeply nested I<node> is (the document element is I<1>).
-
-=item * B<isWithin>(I<node>, I<type>)
-
-Return 1 if I<node> is, or is within, an element of the given I<type>;
-otherwise return 0.
-
-=item * B<getFQGI>(node)
-
-Return the list of element types of I<node>'s
-ancestors, from the root down, separated by '/'.
-For example, "html/body/div/ul/li/p/b".
-B<Note>: An FQGI does I<not> identify a specific element instance or location
-in a document; for that, see I<getXPointer>().
-
-=item * B<getXPointer>(node)
-
-Return the XPointer child sequence to I<node>.
-That is, the list of child-numbers for all the ancestors of the node, from
-the root down, separated by '/'. For example, "1/1/5/2/1".
-This is a fine unique name for the node's location in the document.
-
-=item * B<XPointerCompare(x1,x2)>
-
-Compare two XPointer child-sequences (see I<getXPointer>)
-for relative document order, returning -1, 0, or 1.
-This does not require actually looking at a document, so no document or
-node is passed.
-
-=item * B<nodeCompare(n1,n2)>
-
-Compare two nodes for document order, returning -1, 0, or 1.
-
-=item * B<XPointerInterpret(document,x)>
-
-Interpret the XPointer child sequence in the string
-I<x>, in the context of the given I<document>,
-and return the node it identifies (or undef if there is no such node).
-
-=item * B<getEscapedAttributeList>(node)
-
-Return the entire attribute list for
-I<node>, as needed to go within a XML start-tag. The attributes will be
-quoted using the double-quote character ('"'), and any <, &, or " in them
-will be replaced by the appropriate XML predefined charcter reference.
-
-=back
-
-
-=head2 Large-scale tree operations
-
-=over
-
-=item * B<deleteWhiteSpaceNodes>(node)
-
-Delete all white-space-only text nodes that are descendants of I<node>.
-
-=item * B<normalizeAllSpace>(node)
-
-Do the equivalent of XSLT normalize-space()
-on all text nodes in the subtree headed at I<node>.
-B<Note>: This is I<not> the same as the XML::DOM::normalize() method, which
-instead combines adjacent text nodes.
-
-=item * B<insertPrecedingSibling>(I<node, newNode>)
-
-=item * B<insertFollowingSibling>(I<node, newNode>)
-
-=item * B<insertParent>(I<node, type>)
-
-=item * B<mergeWithFollowingSiblingText>(node)
-
-The following-sibling of I<node> is deleted, but its text content
-is appended to I<node>.
-This drops any sub-structure of the current and sibling.
-New. See also the C<diffCorefs> command.
-
-=item * B<groupSiblings(node1,node2,typeForNewParent)>
-
-Group all the nodes from I<node1> through I<node2> together, under a
-new node of type I<typeForNewParent>. Fails if the specified nodes are
-not siblings or are not defined.
-
-=item * B<promoteChildren>(node)
-
-Remove I<node> but keep all its children, which becomes siblings at the same
-place where I<node> was.
-
-=item * B<splitNode>(node, childNode, offset)
-
-Breaks I<node> into 2 new sibling nodes of the same type.
-The children preceding and including node I<childNode> end up
-under the first resulting sibling node; the rest under the second.
-However, if I<childNode> is a text node and I<offset> is provided,
-then I<childNode> will also be split, with the characters preceding and
-including I<offset> (counting from 1) becoming a final text node under
-the first new sibling node, and the rest become an initial text node
-under the second.
-(not yet supported)
-
-
-=item * B<forEachNode(node,preCallback,postCallback)>
-
-Traverse the subtree headed at I<node>,
-calling the callbacks before and after traversing each node's subtree.
-
-=item * B<forEachTextNode(node,preCallback,postCallback)>
-
-Like I<forEachNode>(), but callbacks are I<only> called when at text nodes.
-
-=item * B<forEachElement(node,preCallback,postCallback)>
-
-Like I<forEachNode>(), but callbacks are I<only> called when at element nodes.
-
-=item * B<forEachElementOfType(node,type,preCallback,postCallback)>
-
-Like I<forEachNode>(), but callbacks are I<only> called when at
-element nodes whose type name matches I<type> (which may be a regex).
-
-=item * B<collectAllText(node,delimiter)>
-
-Concatenate together the content of
-all the text nodes in the subtree headed at I<node>,
-putting I<delimiter> in between.
-
-=item * B<collectAllXml2>(node,delimiter,useDtdInformation,inlines)
-
-(newer version, in testing)
-
-=item * B<collectAllXml>(node,delimiter,useDtdInformation,inlines)
-
-Generate the XML representation for the subtree headed at I<node>.
-It knows about elements, attributes, pis, comments, and appropriate escaping.
-However, it won't do anything for CDATA sections (other than escape as
-normal text), XML Declaration, DOCTYPE, or any DTD nodes.
-
-If I<delimiter> contains a newline, the subtree
-will include newlines and indentation.
-
-If I<useDtdInformation> is true, HTML-specific element information
-from HtmlKnowledge.xsv via C<DtdKnowledge.pm>
-will be used to help with pretty-printing and empty-tag generation.
-
-=item * B<export(element, fileHandle, includeXmlDecl, includeDoctype)>
-
-Save the subtree headed at I<element> to the I<fileHandle>.
-If I<includeXmlDecl> is present and true, start with an XML declaration.
-If I<includeDoctype> is present and true, include a DOCTYPE declaration,
-using I<element>'s type as the document-element name, and include any
-DTD information that was available in the DOM (unfinished).
-See also XML::DOM::Node::toString(),
-XML::DOM::Node::printToFile(), XML::DOM::Node::printToFileHandle().
-
-=back
-
-
-=head2 Index (internal package)
-
-=over
-
-=item * B<buildIndex>(attributeName)
-
-Return a hash table in which each
-entry has the value of the specified I<attributeName> as key, and the element on
-which the attribute occurred as value. This is similar to the XSLT 'key'
-feature.
-
-=item * B<find(value)>
-
-=back
-
-
-=head2 Character stuff (internal package)
-
-(also available in I<SimplifyUnicode.pm>)
-
-=over
-
-=item * B<escapeXmlAttribute(string)>
-
-Escape the string as needed for it to
-fit in an attribute value (amp, lt, and quot).
-
-=item * B<escapeXmlContent(string)>
-
-Escape the string as needed for it to
-fit in XML text content (amp, lt, and gt when following ']]').
-
-=item * B<escapeASCII(string)>
-
-Escape the string as needed for it to
-fit in XML text content, *and* recodes and non-ASCII characters as XML
-numeric characters references.
-
-=item * B<unescapeXml(string)>
-
-Change XML numeric characters references, as
-well as references to the 5 pre-defined XML named entities, into the
-corresponding literal characters.
-
-=back
-
-
-
-=head1 Related commands
-
-C<SimplifyUnicode.pm> -- Reduces variations on Roman characters, ligatures,
-dashes, whitespace charadters, quotes, etc. to more basic forms.
-
-C<fakeParser.pm> -- a mostly-conforming XML/HTML parser, but able to survive
-most WF errors and correct some. Supports push and pull interface, essentially
-SAX.
-
-C<xmlOutput.pm> -- Makes it easy to produce WF XML output. Provides methods
-for escaping data correctly for each relevant context; knows about character
-references, namespaces, and the open-element context; has useful methods for
-inferring open and close tags to keep things in sync.
-
-C<DtdKnowledge.pm> -- Provides pretty-printing specs for I<collectAllXml>().
-
-
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
-
-    1;
