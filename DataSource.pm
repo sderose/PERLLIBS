@@ -2,226 +2,27 @@
 #
 # DataSource.pm (split from TabulFormats.pm)
 #     Support for TabularFormats input sources.
-#
-# Written 2010-03-23 by Steven J. DeRose, as csvFormat.pm
+# 2010-03-23: Written by Steven J. DeRose, as csvFormat.pm
 #     (many changes/improvements).
-# ...
-# 2012-06-08 sjd: Add readBalanced(), readToUnquotedDelim().
-#     Finish hooking up and documenting 'DataSource' package.
-#     Finish readRecord() (incl. comments) for JSON, MANCH.
-#     Make readRecord() really do exactly one record (sexp, xml, mime, manch...
-# 2013-01-18 sjd: Add tell(), mainly for RecordFile.pm.
-# 2013-02-06ff sjd: Don't call sjdUtils::setOptions("verbose").
-#     Work on -stripRecord.
-#     Break out DataSchema package, and tell it and DataSource what they need,
-#     so they don't have to know 'owner' any more. Clean up virtuals a bit.
-#     Also break out DataOptions and DataCurrent packages. Fix order of events
-#     in pull-parser interface. Format-support packages to separate file.
-#     Support repetition indicators on datatypes.
-# 2013-02-14 sjd: Sync package DataSource's API, closer to RecordFile.pm.
-# 2013-04-02 sjd: Forward a few more calls down to sub-packages (for tab2xml).
-#     Add dprev for prior data record. Centralize setFieldNamesFromArray() call
-#     from parseHeader() and readAndParseHeader() -- not in TFormatSupport.pm.
-# ...
-# 2017-04-19: Split DataSource to separate file DataSource.pm.
-#
-# To do:
-#     Integrate with/into RecordFile.
-#     Protect against UTF encoding errors.
-#     Handle blank records better (integrate readRealLine).
-#     Replace getRecordAsString (and Array).
-#     FormatSniffer.
-#
-# Low priority:
-#     Way to get the original offset/length of each field in record?
-#
-#
-# Should integrate into RecordFile.pm, then ditch this package.
-# Should look pretty much like a regular file.
-#
-# Syncing APIS:
-#
-# UsedHere  DataSource       RecordFile         Files
-#    Y        new              new
-#    Y        open             open               open
-#    Y        binmode          binmode            binmode
-#    Y        close            close              close
-#    Y        seek             seek               seek
-#    Y        tell             tell               tell
-#    Y        readline         readline           readline
-#
-#    Y        attach           attach
-#    Y        addText
-#             pushback
-#              (only used by MANCH format, so far).
-#
-#             readRealLine
-#             readBalanced
-#               findCloser
-#             readToUnquotedDelim
-#                              setInterruptCB
-#                              seekRecord
-#                              tellRecord
-#                              readRecordsAsArray
-#                              readOneRecord
-#                              readNthRecord
 #
 use strict;
 use feature 'unicode_strings';
 use sjdUtils;
 
-package DataSource;
+our %metadata = (
+    'title'        => "DataSource",
+    'description'  => "",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2010-03-23",
+    'modified'     => "2021-09-16",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
 
-sub new {
-    my ($class) = @_;
-
-    my $self = {
-        path         => undef,
-        FH           => undef,
-        encoding     => "",
-        buffer       => "",
-        hasAnyDataBeenSupplied => 0,
-        stripRecords => 0, # set by setOption() as needed.
-    };
-
-    bless $self, $class;
-    return $self;
-}
-
-sub open {
-    my ($self, $path, $encoding) = @_;
-    if ($self->{FH}) {
-        $self->close();
-    }
-    $self->{buffer} = "";
-    $self->{hasAnyDataBeenSupplied} = 0;
-
-    if (!open($self->{FH}, "<$path")) {
-        return(undef);
-    }
-    if (!$encoding) {
-        $encoding = "";
-    }
-    else {
-        $self->binmode($encoding);
-    }
-    $self->{path} = $path;
-    $self->{hasAnyDataBeenSupplied} = 1;
-    return($self->{FH});
-} # open
-
-sub binmode {
-    my ($self, $encoding) = @_;
-    if (!$self->{FH}) {
-        alogging::eMsg(0, " Can't binmode unless a file is open.");
-        return(0);
-    }
-    if (!$encoding) { $encoding = "utf8"; }
-    $self->{encoding} = $encoding;
-    $self->{FH}->binmode(":encoding($encoding)");
-    return(1);
-}
-
-sub attach {
-    my ($self, $fh) = @_;
-    $self->{FH} = $fh;
-    $self->{path} = "";
-    $self->{hasAnyDataBeenSupplied} = 1;
-    return(1);
-} # attach
-
-sub close {
-    my ($self) = @_;
-    $self->{buffer} = "";
-    if ($self->{FH}) {
-        close($self->{FH});
-    }
-    $self->{hasAnyDataBeenSupplied} = 0;
-}
-
-sub seek {
-    my ($self, $n) = @_;
-    $self->{buffer} = "";
-    return($self->{FH}->seek($n,0));
-} # tell
-
-sub tell {
-    my ($self) = @_;
-    # Doesn't account for text (not file), or for pushbacks.
-    return($self->{FH}->tell());
-} # tell
-
-# Read and return one physical line, or undef on EOF/EOB.
-# Take input from the buffer first, then from the file (if any).
-#
-sub readline {
-    my ($self) = @_;
-    my $rc = undef;
-    if ($self->{buffer} ne "") {             # string (includes pushback)
-        $self->{buffer} =~ s/^(.*?\n)//;
-        if ($1) {
-            $rc = $1;
-        }
-        else {
-            $rc = $self->{buffer};
-            $self->{buffer} = undef;
-        }
-    }
-
-    if (!$rc && $self->{FH}) {               # if needed, read file
-        # SHOULD DO MORE TO PROTECT AGAINST BAD UNICODE
-        #alogging::vMsg(0, "Ref of FH is: " . ref($self->{FH}) . ".");
-        if (ref($self->{FH}) eq "GLOB") {
-            my $fh = $self->{FH};
-            $rc = <$fh>;
-        }
-        else {
-            $rc = $self->{FH}->readline();
-        }
-    }
-
-    if (defined $rc) {
-        chomp $rc;
-        if ($self->{stripRecords}) { # Set by setOption().
-            $rc =~ s/\s+$//;
-            $rc =~ s/^\s+//;
-        }
-    }
-    return($rc);
-} # readline
-
-
-###############################################################################
-# Methods *not* also found in RecordFile.pm.
-#
-sub addText {
-    my ($self, $text) = @_;
-    if ($self->{FH}) {
-        $self->close();
-    }
-    $self->{buffer} .= $text;
-    $self->{hasAnyDataBeenSupplied} = 1;
-} # add_text
-
-sub pushback {
-    my ($self, $text) = @_;
-    $self->{buffer} = $text . $self->{buffer};
-} # pushback
-
-
-
-###############################################################################
-###############################################################################
-#
-if (!caller) {
-    system "perldoc $0";
-}
-1;
-
-
-###############################################################################
-###############################################################################
-#
 
 =pod
 
@@ -369,8 +170,6 @@ for the rest of the line (that may change).
 =back
 
 
-=for nobody ===================================================================
-
 =head1 Related commands
 
 =over
@@ -381,8 +180,6 @@ handles logical rather than physical records.
 
 =back
 
-
-=for nobody ===================================================================
 
 =head1 Known bugs and limitations
 
@@ -395,6 +192,75 @@ handles logical rather than physical records.
 =back
 
 
+=head1 History
+
+# Written 2010-03-23 by Steven J. DeRose, as csvFormat.pm
+#     (many changes/improvements).
+# ...
+# 2012-06-08 sjd: Add readBalanced(), readToUnquotedDelim().
+#     Finish hooking up and documenting 'DataSource' package.
+#     Finish readRecord() (incl. comments) for JSON, MANCH.
+#     Make readRecord() really do exactly one record (sexp, xml, mime, manch...
+# 2013-01-18 sjd: Add tell(), mainly for RecordFile.pm.
+# 2013-02-06ff sjd: Don't call sjdUtils::setOptions("verbose").
+#     Work on -stripRecord.
+#     Break out DataSchema package, and tell it and DataSource what they need,
+#     so they don't have to know 'owner' any more. Clean up virtuals a bit.
+#     Also break out DataOptions and DataCurrent packages. Fix order of events
+#     in pull-parser interface. Format-support packages to separate file.
+#     Support repetition indicators on datatypes.
+# 2013-02-14 sjd: Sync package DataSource's API, closer to RecordFile.pm.
+# 2013-04-02 sjd: Forward a few more calls down to sub-packages (for tab2xml).
+#     Add dprev for prior data record. Centralize setFieldNamesFromArray() call
+#     from parseHeader() and readAndParseHeader() -- not in TFormatSupport.pm.
+# ...
+# 2017-04-19: Split DataSource to separate file DataSource.pm.
+
+
+=head1 To do
+
+#     Integrate with/into RecordFile.
+#     Protect against UTF encoding errors.
+#     Handle blank records better (integrate readRealLine).
+#     Replace getRecordAsString (and Array).
+#     FormatSniffer.
+#
+# Low priority:
+#     Way to get the original offset/length of each field in record?
+#
+#
+# Should integrate into RecordFile.pm, then ditch this package.
+# Should look pretty much like a regular file.
+#
+# Syncing APIS:
+#
+# UsedHere  DataSource       RecordFile         Files
+#    Y        new              new
+#    Y        open             open               open
+#    Y        binmode          binmode            binmode
+#    Y        close            close              close
+#    Y        seek             seek               seek
+#    Y        tell             tell               tell
+#    Y        readline         readline           readline
+#
+#    Y        attach           attach
+#    Y        addText
+#             pushback
+#              (only used by MANCH format, so far).
+#
+#             readRealLine
+#             readBalanced
+#               findCloser
+#             readToUnquotedDelim
+#                              setInterruptCB
+#                              seekRecord
+#                              tellRecord
+#                              readRecordsAsArray
+#                              readOneRecord
+#                              readNthRecord
+#
+
+
 =head1 Ownership
 
 This work by Steven J. DeRose is licensed under a Creative Commons
@@ -404,5 +270,153 @@ this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
 For the most recent version, see L<http://www.derose.net/steve/utilities/>.
 
 =cut
+
+
+###############################################################################
+#
+package DataSource;
+
+sub new {
+    my ($class) = @_;
+
+    my $self = {
+        path         => undef,
+        FH           => undef,
+        encoding     => "",
+        buffer       => "",
+        hasAnyDataBeenSupplied => 0,
+        stripRecords => 0, # set by setOption() as needed.
+    };
+
+    bless $self, $class;
+    return $self;
+}
+
+sub open {
+    my ($self, $path, $encoding) = @_;
+    if ($self->{FH}) {
+        $self->close();
+    }
+    $self->{buffer} = "";
+    $self->{hasAnyDataBeenSupplied} = 0;
+
+    if (!open($self->{FH}, "<$path")) {
+        return(undef);
+    }
+    if (!$encoding) {
+        $encoding = "";
+    }
+    else {
+        $self->binmode($encoding);
+    }
+    $self->{path} = $path;
+    $self->{hasAnyDataBeenSupplied} = 1;
+    return($self->{FH});
+} # open
+
+sub binmode {
+    my ($self, $encoding) = @_;
+    if (!$self->{FH}) {
+        alogging::eMsg(0, " Can't binmode unless a file is open.");
+        return(0);
+    }
+    if (!$encoding) { $encoding = "utf8"; }
+    $self->{encoding} = $encoding;
+    $self->{FH}->binmode(":encoding($encoding)");
+    return(1);
+}
+
+sub attach {
+    my ($self, $fh) = @_;
+    $self->{FH} = $fh;
+    $self->{path} = "";
+    $self->{hasAnyDataBeenSupplied} = 1;
+    return(1);
+} # attach
+
+sub close {
+    my ($self) = @_;
+    $self->{buffer} = "";
+    if ($self->{FH}) {
+        close($self->{FH});
+    }
+    $self->{hasAnyDataBeenSupplied} = 0;
+}
+
+sub seek {
+    my ($self, $n) = @_;
+    $self->{buffer} = "";
+    return($self->{FH}->seek($n,0));
+} # tell
+
+sub tell {
+    my ($self) = @_;
+    # Doesn't account for text (not file), or for pushbacks.
+    return($self->{FH}->tell());
+} # tell
+
+# Read and return one physical line, or undef on EOF/EOB.
+# Take input from the buffer first, then from the file (if any).
+#
+sub readline {
+    my ($self) = @_;
+    my $rc = undef;
+    if ($self->{buffer} ne "") {             # string (includes pushback)
+        $self->{buffer} =~ s/^(.*?\n)//;
+        if ($1) {
+            $rc = $1;
+        }
+        else {
+            $rc = $self->{buffer};
+            $self->{buffer} = undef;
+        }
+    }
+
+    if (!$rc && $self->{FH}) {               # if needed, read file
+        # SHOULD DO MORE TO PROTECT AGAINST BAD UNICODE
+        #alogging::vMsg(0, "Ref of FH is: " . ref($self->{FH}) . ".");
+        if (ref($self->{FH}) eq "GLOB") {
+            my $fh = $self->{FH};
+            $rc = <$fh>;
+        }
+        else {
+            $rc = $self->{FH}->readline();
+        }
+    }
+
+    if (defined $rc) {
+        chomp $rc;
+        if ($self->{stripRecords}) { # Set by setOption().
+            $rc =~ s/\s+$//;
+            $rc =~ s/^\s+//;
+        }
+    }
+    return($rc);
+} # readline
+
+
+###############################################################################
+# Methods *not* also found in RecordFile.pm.
+#
+sub addText {
+    my ($self, $text) = @_;
+    if ($self->{FH}) {
+        $self->close();
+    }
+    $self->{buffer} .= $text;
+    $self->{hasAnyDataBeenSupplied} = 1;
+} # add_text
+
+sub pushback {
+    my ($self, $text) = @_;
+    $self->{buffer} = $text . $self->{buffer};
+} # pushback
+
+
+###############################################################################
+#
+if (!caller) {
+    system "perldoc $0";
+}
 
 1;

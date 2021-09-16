@@ -1,21 +1,220 @@
 #!/usr/bin/perl -w
 #
 # BibleBooks.pm
-# 
 # 2012-05-10ff: Written by Steven J. DeRose.
 # 
-# To do:
-#     Test.
-#     Add min-length truncation feature
-#     Integrate into renameOSISfiles, osisCheck, fixGNTnames
-#
-# Data:
-#     Finish canons, verseCounts? (cf osisCheck script)
-#     Add Greek/Hebrew names, osisCheck books, to external data
-#
 use strict;
 use XmlTuples;
 
+our %metadata = (
+    'title'        => "BibleBooks",
+    'description'  => "",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2012-05-10",
+    'modified'     => "2021-09-16",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
+
+
+=pod
+
+=head1 Usage
+
+Manage a collection of data about Biblical books, and help normalize data
+such as book names and Scripture references.
+
+The script has knowledge of the books from many denominations' canons.
+
+=head2 Example
+
+    use BibleBooks;
+    my $bb = new BibleBooks();
+    ...
+    my $bg = new BookGroup();
+    ...
+
+
+=head1 Package BibleBooks
+
+=over
+
+=item * B<new>I<(path)>
+
+Load definitions of Bible book names, abbreviations, and other basic
+data from the Xml Tuples (XSV) file I<path>.
+
+=item * B<getBook> I<(abbr)>
+
+Return a reference to a hash of properties of the named book.
+As with other calls, the book may be specified by many abbreviations, all
+of which are matched ignoring case.
+
+The returned hash (if any) contains fields for:
+
+=over
+
+=item Full -- the full name of the book
+
+=item Osis -- the standard OSIS and SBL abbreviation for the book
+
+=item Alts -- A list of comma-separated alternate names and abbreviations
+for the book.
+
+=item Group -- a single predefined group to which the book is assigned.
+
+=item Ser -- an integer providing a full ordering over all books. Books
+within any one predefined group (such as NT) have numbers in the
+usual order.
+
+=item Ch -- the number of chapters in the book
+
+=item Vs -- the number of verses in each chapter of the book, as a
+space-separated list.
+
+=back
+
+=item * B<getFullName> I<(abbr)>
+
+Given any known abbreviation, get the hash of data for the referenced book.
+Other functions accept the same abbreviations.
+
+=item * B<getOsisName> I<(abbr)>
+
+Get the official OSIS and SBL abbreviation.
+
+=item * B<getNChapters> I<(abbr)>
+
+Get the number of chapters (0 if unknown).
+
+=item * B<getSerial> I<(abbr)>
+
+Get the book number in linear sequence (0 if unknown).
+The numbering includes all Tanakh, Apocryphal/Deuterocanonical, and
+New Testament books. Thus, you can obviously still sort by this number
+even for any small canon.
+
+=item * B<getBooksInGroup> I<(groupName)>
+
+Return a reference to an array of the full names of all known books that are
+in the predefined book-group named I<groupName> (e.g., OT, AP, NT, Rohlfs,...).
+These are specified by the "Group" field in the XML Tuples data.
+
+=item * B<getAllGroupNames( )>
+
+Return a reference to a hash, with an entry for each predefined book-group name.
+The associated value is the number of books in that book group. This does
+*not* include any book groups that are created by callers (see the following
+I<BookGroup> package).
+
+=item * B<ref2osisRef> I<ref>
+
+Attempt to convert an apparent Scripture reference to OSIS standard reference
+format. If there are multiple comma-separated parts, multiple OSISrefs
+will be returned, one for each such part. 
+Each OSISref will start with an OSIS book abbreviation,
+and may have following (dot-separated) chapter, verse, verse-part (for example,
+"a"), and range components.
+
+=back
+
+
+=head1 Package BookGroup
+
+This object manages an ordered list of books, identifying them simply
+by their long ("Full") names. Some groups can simply be created via
+I<fillPredefinedGroup(name)>, others can be constructed by successive
+I<addBookGroup> and/or I<addBook> calls.
+
+=over
+
+=item * B<new>I<($groupName)>
+
+
+=item * B<addBookGroup>I<($otherGroup)>
+
+
+=item * B<addBook>I<($bookFullName)>
+
+
+=item * B<deleteBook>I<($bookFullName)>
+
+
+=item * B<getFullNames>I<( )>
+
+
+=item * B<getFullNameN>I<(n)>
+
+Return the full name of the I<n>th book in the group.
+
+=item * B<getSize>I<( )>
+
+Return the number of book in the group.
+
+=item * B<fillPreDefinedGroup>I<(groupName, mainBB)>
+
+The second argument must be a BibleBooks instance (since it has the
+information objects for known books).
+
+=back
+
+
+=head1 Known Bugs and Limitations
+
+It would be nicer to have getSerial also take a canon name, such as
+(Jewish, RCatholic, Orthodox, Protestant,...), and return the position
+specific to that canon (or 0 for any book not in that canon).
+
+Although (for example) I<ref2osisRef( )> could check
+whether chapter numbers are in range, it doesn't.
+
+Book groups are not available for entire canons (though most can be easily
+build out of the predefined books and groups).
+
+
+=head1 Related commands
+
+C<mediaWiki2HTML> uses this to identify Biblical links during conversion.
+
+C<BibleBooks.xsv> provides the XML Tuples data used by this package.
+
+C<osisCheck> uses this for checking books and building canons. It has its
+own data on verses per book, however.
+
+
+=head1 History
+
+    2012-05-10ff: Written by Steven J. DeRose.
+
+
+=head1 To do
+
+    Test.
+    Add min-length truncation feature
+    Integrate into renameOSISfiles, osisCheck, fixGNTnames
+
+Data:
+    Finish canons, verseCounts? (cf osisCheck script)
+    Add Greek/Hebrew names, osisCheck books, to external data
+
+
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons 
+Attribution-Share Alike 3.0 Unported License. For further information on
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+=cut
+
+
+###############################################################################
+#
 package BibleBooks;
 
 sub new {
@@ -171,7 +370,6 @@ sub getAllGroupNames {
 }
 
 
-
 ###############################################################################
 # Convert any old reference into one or more OSIS-format refs.
 #
@@ -212,9 +410,6 @@ sub ref2osisRef {
 } # ref2osisRef
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 # Maintain a named sequence of books (identified by their fullNames).
 # These also represent canons.
@@ -279,196 +474,3 @@ sub fillPreDefinedGroup {
 
 
 1;
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-Manage a collection of data about Biblical books, and help normalize data
-such as book names and Scripture references.
-
-The script has knowledge of the books from many denominations' canons.
-
-
-=head2 Example
-
-use BibleBooks;
-my $bb = new BibleBooks();
-...
-my $bg = new BookGroup();
-...
-
-
-
-=for nobody ===================================================================
-
-=head1 Package BibleBooks
-
-=over
-
-=item * B<new>I<(path)>
-
-Load definitions of Bible book names, abbreviations, and other basic
-data from the Xml Tuples (XSV) file I<path>.
-
-=item * B<getBook> I<(abbr)>
-
-Return a reference to a hash of properties of the named book.
-As with other calls, the book may be specified by many abbreviations, all
-of which are matched ignoring case.
-
-The returned hash (if any) contains fields for:
-
-=over
-
-=item Full -- the full name of the book
-
-=item Osis -- the standard OSIS and SBL abbreviation for the book
-
-=item Alts -- A list of comma-separated alternate names and abbreviations
-for the book.
-
-=item Group -- a single predefined group to which the book is assigned.
-
-=item Ser -- an integer providing a full ordering over all books. Books
-within any one predefined group (such as NT) have numbers in the
-usual order.
-
-=item Ch -- the number of chapters in the book
-
-=item Vs -- the number of verses in each chapter of the book, as a
-space-separated list.
-
-=back
-
-
-=item * B<getFullName> I<(abbr)>
-
-Given any known abbreviation, get the hash of data for the referenced book.
-Other functions accept the same abbreviations.
-
-=item * B<getOsisName> I<(abbr)>
-
-Get the official OSIS and SBL abbreviation.
-
-=item * B<getNChapters> I<(abbr)>
-
-Get the number of chapters (0 if unknown).
-
-=item * B<getSerial> I<(abbr)>
-
-Get the book number in linear sequence (0 if unknown).
-The numbering includes all Tanakh, Apocryphal/Deuterocanonical, and
-New Testament books. Thus, you can obviously still sort by this number
-even for any small canon.
-
-=item * B<getBooksInGroup> I<(groupName)>
-
-Return a reference to an array of the full names of all known books that are
-in the predefined book-group named I<groupName> (e.g., OT, AP, NT, Rohlfs,...).
-These are specified by the "Group" field in the XML Tuples data.
-
-=item * B<getAllGroupNames( )>
-
-Return a reference to a hash, with an entry for each predefined book-group name.
-The associated value is the number of books in that book group. This does
-*not* include any book groups that are created by callers (see the following
-I<BookGroup> package).
-
-=item * B<ref2osisRef> I<ref>
-
-Attempt to convert an apparent Scripture reference to OSIS standard reference
-format. If there are multiple comma-separated parts, multiple OSISrefs
-will be returned, one for each such part. 
-Each OSISref will start with an OSIS book abbreviation,
-and may have following (dot-separated) chapter, verse, verse-part (for example,
-"a"), and range components.
-
-=back
-
-
-
-=for nobody ===================================================================
-
-=head1 Package BookGroup
-
-This object manages an ordered list of books, identifying them simply
-by their long ("Full") names. Some groups can simply be created via
-I<fillPredefinedGroup(name)>, others can be constructed by successive
-I<addBookGroup> and/or I<addBook> calls.
-
-=over
-
-=item * B<new>I<($groupName)>
-
-
-=item * B<addBookGroup>I<($otherGroup)>
-
-
-=item * B<addBook>I<($bookFullName)>
-
-
-=item * B<deleteBook>I<($bookFullName)>
-
-
-=item * B<getFullNames>I<( )>
-
-
-=item * B<getFullNameN>I<(n)>
-
-Return the full name of the I<n>th book in the group.
-
-=item * B<getSize>I<( )>
-
-Return the number of book in the group.
-
-=item * B<fillPreDefinedGroup>I<(groupName, mainBB)>
-
-The second argument must be a BibleBooks instance (since it has the
-information objects for known books).
-
-=back
-
-
-
-=for nobody ===================================================================
-
-=head1 Known Bugs and Limitations
-
-It would be nicer to have getSerial also take a canon name, such as
-(Jewish, RCatholic, Orthodox, Protestant,...), and return the position
-specific to that canon (or 0 for any book not in that canon).
-
-Although (for example) I<ref2osisRef( )> could check
-whether chapter numbers are in range, it doesn't.
-
-Book groups are not available for entire canons (though most can be easily
-build out of the predefined books and groups).
-
-
-
-=head1 Related commands
-
-C<mediaWiki2HTML> uses this to identify Biblical links during conversion.
-
-C<BibleBooks.xsv> provides the XML Tuples data used by this package.
-
-C<osisCheck> uses this for checking books and building canons. It has its
-own data on verses per book, however.
-
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons 
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
-

@@ -1,11 +1,25 @@
 #!/usr/bin/perl -w
 #
-# DtdKnowledge.pm
+# DtdKnowledge.pm: Provide varoius info about HTML (or other) element types.
+# 2011-06-02: Written by Steven J. DeRose.
 #
-# Provide varoius info about HTML (or other) element types.
-#
-###############################################################################
-#
+use strict;
+use XmlTuples;
+
+our %metadata = (
+    'title'        => "DtdKnowledge",
+    'description'  => "",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2011-06-02",
+    'modified'     => "2021-09-16",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
+
 
 =pod
 
@@ -110,8 +124,6 @@ Look up and return some information associated with the element.
 Returns true iff the active schema defines an element type named I<elementType>.
 
 
-=for nobody ===================================================================
-
 =item * B<getDisplayType>(I<elementType>)
 
 Returns the CSS "Display" property appropriate to the given element.
@@ -184,8 +196,8 @@ for inlines or unknown names, otherwise 1.
 C<tupleData/XXXKnowledge.xsv> -- information for DTD "XXX",
 as XSV.
 
-See also the Microsoft "Schema Object Model", which has some similar features
-to this: https://docs.microsoft.com/en-us/dotnet/standard/data/xml/xml-schema-object-model-overview.
+See also the Microsoft "Schema Object Model", which has some similar features to this: 
+L<https://docs.microsoft.com/en-us/dotnet/standard/data/xml/xml-schema-object-model-overview>.
 
 
 =head1 Known bugs and limitations
@@ -204,14 +216,9 @@ rank-group (h)
 information re. attributes: is-id, is-uri, inherits, is-accessibility-alt
 
 
-=head1 Ownership
+=head1 To do
 
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/> or
-L<http://github.com/sderose>.
+Need this even exist given XSV does nearly all the work?
 
 
 =head1 History
@@ -221,18 +228,25 @@ L<http://github.com/sderose>.
 Generalize set/get to handle any properties at all.
 * 2019-12-24: Update to fit better with DomExtensions.py, etc. Clean up
 old usage of packed strings. Pin down properties better.
+* 2021-09-16: Cleanup.
 
-=head1 To do
 
-Need this even exist given XSV does nearly all the work?
+=head1 Rights
+
+Copyright 2011-06-02 by Steven J. DeRose. This work is licensed under a
+Creative Commons Attribution-Share Alike 3.0 Unported License.
+For further information on this license, see
+L<https://creativecommons.org/licenses/by-sa/3.0>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities> or
+L<https://github.com/sderose>.
+
 
 =cut
 
-use strict;
-use XmlTuples;
 
-our $VERSION_DATE = "1.00";
-
+###############################################################################
+#
 package DtdKnowledge;
 
 my $infoPath = "";
@@ -338,6 +352,5 @@ sub getPostSpace {
     my ($self, $name) = @_;
     return($self->getProp($name, "Post"));
 }
-
 
 1;

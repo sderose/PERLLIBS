@@ -1,8 +1,260 @@
 #!/usr/bin/perl -w
 #
 # EntityManager.pm
+# 2011-03-11: Written by Steven J. DeRose, based on my ymlParser.pm.
 #
-# Source 'ymlParser.pm' written 2011-03-11 by Steven J. DeRose.
+use strict;
+use XML::DOM;
+#use XML::Catalog;
+use HTML::Entities;
+# http://search.cpan.org/~adamk/Archive-Zip-1.30/lib/Archive/Zip/MemberRead.pm
+#use Archive::Zip;
+#use Archive::Zip::MemberRead;
+
+our %metadata = (
+    'title'        => "EntityManager",
+    'description'  => "",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2011-03-11",
+    'modified'     => "2021-09-16",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
+
+
+=pod
+
+=head1 Usage
+
+use EntityManager;
+
+Utility to support XML and XML-like parsers by:
+
+=over
+
+=item * maintaining a dictionary of known entities
+
+=item * manage interaction with XML entity catalogs (for resolving
+entity references to system objects such as URIs or files)
+
+=item * maintaining a stack of currently-open entities
+
+=item * providing transparent input from the resulting data stream
+
+=item * supporting expansion of entities and numeric character references
+
+=item * handle data-encoding issues (future)
+
+=back
+
+=head2 Example code
+
+(most likely, this will be done from somewhere in an XML implementation)
+
+  use EntityManager;
+  $fp = new EntityManager();
+  $fp->openCatalog($path);
+  $fp->defineTextEntity("gfdl", "This document is license under the GFDL.");
+  ...various parsing stuff...
+    my $newTextNode = $fp->expandGeneralEntities($oldTextNode);
+  ...
+
+=head2 Kinds of entities
+
+See L<http://www.w3.org/TR/REC-xml/#sec-entity-decl>
+
+=over
+
+=item * Parameter vs. General
+
+=item * Internal vs. External
+
+=item * Parsed (always Internal) vs. Unparsed
+
+=item * Notation (can only be General)
+
+=back
+
+
+=head1 Methods
+
+=over
+
+=item * B<new>()
+
+=item * B<reset>()
+
+Close all open entities. However, defined entities are not undefined.
+
+
+=item * B<getOption>(I<name)
+
+Return the current value of the named option (see I<setOption>).
+
+=item * B<setOption>(I<name, value>)
+
+Set the named option to the given value. Options available include:
+
+=over
+
+=item I<verbose> -- (integer) issue various messages to STDERR.
+
+=item I<canRedefine> -- Allow entities to be redefined (if declarations are
+being passed in from a parser reading an XML DTD, this should be off.
+
+=item I<Stream_Delimiter> -- See C<XML::Parser>.
+
+=item I<useHTMLEntities> -- Recognize the HTML 4 named entities.
+
+=item I<useXMLEntities> -- Recognize XML's 5 predefined entities.
+
+=item I<useGenrlEntities> -- Recognize declared general entities.
+
+=item I<useParamEntities> -- Recognize declared parameter entities.
+
+=item I<useNumericRefs> -- Recognize decimal and hex character references.
+
+=item I<useNDATAEntities> -- Recognize declared unparsed / ndata / notation
+entities.
+
+=item I<expandGeneralEntities> -- (Boolean) if turned off,
+entities will be returned as I<unparsed> events with a single argument,
+which is the original form of the entity (or numeric character) reference.
+
+=back
+
+
+
+=item * B<addPath>(path)
+
+Add I<path> to the end of the list of directories, in which to search
+for external entities. First added, is first searched.
+By default, only the current working directory is searched.
+
+=item * B<addCatalog>(path)
+
+Add the file at I<path> to the list of open XML entity-resolution catalogs.
+See L<http://www.oasis-open.org/committees/entity/specs/cs-entity-xml-catalogs-1.0.html> for the implementation used,
+and L<http://search.cpan.org/~ebohlman/XML-Catalog-0.02/Catalog.pm>
+for a more current Catalog format specification.
+For example:
+
+  <public publicId="ISO 8879:1986//ENTITIES Added Latin 1//EN"
+          uri="iso-lat1.gml"/>
+  <public publicId="-//USA/AAP//DTD BK-1//EN"
+          uri="aapbook.dtd"/>
+  <public publicId="-//Example, Inc.//DTD Report//EN"
+          uri="http://www.example.com/dtds/report.dtd"/>
+
+=item * B<addEntityCallback>(cb)
+
+Attach the callback function I<cb> to handle entity references that cannot
+be resolved otherwise (including ones that could be resolved except that
+their resolution is turned off by some option (see I<setOption>).
+I<cb> will be called like:
+
+    resolver(theEntityManager, entityName, system, public, isParam)
+
+And it must return either an open file handle, or a string, or undef.
+
+=item * B<addDefaultEntity>(I<string>)
+
+Modeled after an C<SGML> feature, this entity will be used if an attempt is
+made to expand a nonexistent entity.
+
+
+=item * B<defineEntity>(I<$name,$valueType,$value,$sys,$pub,$notation,$isParam>)
+
+Associate the entity I<name> with the specified data. The argument are
+the same as returned by CPAN's C<XML::Parser>'s I<Entity> event, which
+reflects any XML ENTITY declaration in a DTD.
+I<sysid> can be any of:
+
+=over
+
+=item * a file or http or https URI fetched via C<curl>
+
+=item * a URI starting 'local:',
+searched for along the current path (see I<appendPath>)
+
+=item * a local file with no URI-style prefix,
+searched for along the current path (see I<appendPath>)
+
+=back
+
+
+=item * B<openEntity>(I<name>)
+
+This is the internal method called when a start (or empty) tag is parsed.
+It stacks the element, xml:lang, and some other information, then issues
+the start-element event (and if the I<attrEvents> option is set,
+possibly also some number of following attribute events).
+
+=item * B<closeAllEntities>()
+
+Call I<closeEntity> until you can't any more.
+
+=item * B<closeEntity>()
+
+
+=item * B<getDepth>()
+
+Returns the number of open entities.
+
+=item * B<isOpen>(name)
+
+Returns true iff the (general) entity is open.
+
+=item * B<getCurrentName>()
+
+Returns the name of the currently-open entity.
+
+=item * B<getCurrentEntityDef {
+
+Returns the Entity Definition object for the currently-open entity.
+
+=item * B<getCurrentEntityFrame {
+
+Gets the Frame object representing the currently-open entity.
+
+=item * B<getCurrentEntityLoc>
+
+Returns ($name, $line, $char, $path) for the EntityFrame
+of the innermost open Entity.
+
+=item * B<getWholeEntityLoc>
+
+Returns a string describing the location in each open entity,
+from the innermost, progressing outward.
+Each line is equivalent to a result from I<getCurrentEntityLoc>.
+
+=back
+
+
+
+=head1 Known bugs and limitations
+
+There is no way to take the current working directory out of the path
+used to resolve local-file entities.
+
+
+
+=head1 Related commands
+
+C<xmlOutput.pm> provides an API for managing well-formed output, such
+as maintaining the stack, handling escaping for content, attributes, PIs,
+and comments, etc. etc.
+
+C<FakeParser.pm> and C<YmlParser> use this package.
+
+
+=head1 History
+
+# 2011-03-11: Written by Steven J. DeRose, based on my ymlParser.pm (q.v.).
 # ...
 # 2012-05-18 sjd: Split EntityManager to external package.
 #     Split out EntityStack, EntityFrame, and EntityDef packages.
@@ -17,19 +269,21 @@
 #     Param entities can't be referenced outside the DTD.
 #     Test entityDepth at end of each entity.
 #     Unparsed entities can only be named on ENTITY(IES) attrs, not referenced.
-#
-use strict;
-use XML::DOM;
-#use XML::Catalog;
-use HTML::Entities;
-# http://search.cpan.org/~adamk/Archive-Zip-1.30/lib/Archive/Zip/MemberRead.pm
-#use Archive::Zip;
-#use Archive::Zip::MemberRead;
-
-our $VERSION_DATE = "0.55";
 
 
-###############################################################################
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons
+Attribution-Share Alike 3.0 Unported License, with one additional restriction:
+
+For further information on
+the CCLI license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+=cut
+
+
 ###############################################################################
 # Manage an entity dictionary, and a stack of open entities.
 # This is used for entities
@@ -116,7 +370,6 @@ sub getOption {
 
 
 ###############################################################################
-###############################################################################
 # Catalog and initial data-source (document) support.
 #
 sub addText {
@@ -169,7 +422,6 @@ sub addDefaultEntity {
 
 
 ###############################################################################
-###############################################################################
 # Maintain ENTITY library
 #
 sub defineEntity {
@@ -208,7 +460,6 @@ sub isParameterEntity {
 
 
 ###############################################################################
-###############################################################################
 # Maintain NOTATION library
 #
 sub defineNotation {
@@ -222,7 +473,6 @@ sub isNotation {
 }
 
 
-###############################################################################
 ###############################################################################
 # General information
 #
@@ -408,7 +658,6 @@ sub pushBack {
 
 
 ###############################################################################
-###############################################################################
 # Expand entity and numeric character references
 # ### NOTE: Need to become recursive in case of <!ENTITY...> dcls.
 #
@@ -503,7 +752,6 @@ sub expandParameterEntity {
 
 
 ###############################################################################
-###############################################################################
 # General utilities
 #
 sub isXmlName {
@@ -537,9 +785,6 @@ sub vMsg {
 # End of EntityManager package
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 # A currently *open* entity. This points to an EntityDef object, which has
 # the non-changing information. This also has things like the current file
@@ -695,9 +940,6 @@ sub checkCatalog { # EntityFrame
 # End of EntityFrame package
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 # The definition of one entity (of whatever type).
 # This tightly corresponds to the information available from the DTD (if any).
@@ -735,9 +977,6 @@ sub isLiteral {
 # End of EntityDef package
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 # One notation definition.
 #
@@ -757,264 +996,5 @@ sub new {
 } # new
 
 # End of NotationDef package
-
-
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-use EntityManager;
-
-Utility to support XML and XML-like parsers by:
-
-=over
-
-=item * maintaining a dictionary of known entities
-
-=item * manage interaction with XML entity catalogs (for resolving
-entity references to system objects such as URIs or files)
-
-=item * maintaining a stack of currently-open entities
-
-=item * providing transparent input from the resulting data stream
-
-=item * supporting expansion of entities and numeric character references
-
-=item * handle data-encoding issues (future)
-
-=back
-
-
-=head2 Example code
-
-(most likely, this will be done from somewhere in an XML implementation)
-
-  use EntityManager;
-  $fp = new EntityManager();
-  $fp->openCatalog($path);
-  $fp->defineTextEntity("gfdl", "This document is license under the GFDL.");
-  ...various parsing stuff...
-    my $newTextNode = $fp->expandGeneralEntities($oldTextNode);
-  ...
-
-
-=head2 Kinds of entities
-
-See L<http://www.w3.org/TR/REC-xml/#sec-entity-decl>
-
-=over
-
-=item * Parameter vs. General
-
-=item * Internal vs. External
-
-=item * Parsed (always Internal) vs. Unparsed
-
-=item * Notation (can only be General)
-
-=back
-
-
-
-=head1 Methods
-
-=over
-
-=item * B<new>()
-
-=item * B<reset>()
-
-Close all open entities. However, defined entities are not undefined.
-
-
-=for nobody ===================================================================
-
-=item * B<getOption>(I<name)
-
-Return the current value of the named option (see I<setOption>).
-
-=item * B<setOption>(I<name, value>)
-
-Set the named option to the given value. Options available include:
-
-=over
-
-=item I<verbose> -- (integer) issue various messages to STDERR.
-
-=item I<canRedefine> -- Allow entities to be redefined (if declarations are
-being passed in from a parser reading an XML DTD, this should be off.
-
-=item I<Stream_Delimiter> -- See C<XML::Parser>.
-
-=item I<useHTMLEntities> -- Recognize the HTML 4 named entities.
-
-=item I<useXMLEntities> -- Recognize XML's 5 predefined entities.
-
-=item I<useGenrlEntities> -- Recognize declared general entities.
-
-=item I<useParamEntities> -- Recognize declared parameter entities.
-
-=item I<useNumericRefs> -- Recognize decimal and hex character references.
-
-=item I<useNDATAEntities> -- Recognize declared unparsed / ndata / notation
-entities.
-
-=item I<expandGeneralEntities> -- (Boolean) if turned off,
-entities will be returned as I<unparsed> events with a single argument,
-which is the original form of the entity (or numeric character) reference.
-
-=back
-
-
-
-=for nobody ===================================================================
-
-=item * B<addPath>(path)
-
-Add I<path> to the end of the list of directories, in which to search
-for external entities. First added, is first searched.
-By default, only the current working directory is searched.
-
-=item * B<addCatalog>(path)
-
-Add the file at I<path> to the list of open XML entity-resolution catalogs.
-See L<http://www.oasis-open.org/committees/entity/specs/cs-entity-xml-catalogs-1.0.html> for the implementation used,
-and L<http://search.cpan.org/~ebohlman/XML-Catalog-0.02/Catalog.pm>
-for a more current Catalog format specification.
-For example:
-
-  <public publicId="ISO 8879:1986//ENTITIES Added Latin 1//EN"
-          uri="iso-lat1.gml"/>
-  <public publicId="-//USA/AAP//DTD BK-1//EN"
-          uri="aapbook.dtd"/>
-  <public publicId="-//Example, Inc.//DTD Report//EN"
-          uri="http://www.example.com/dtds/report.dtd"/>
-
-=item * B<addEntityCallback>(cb)
-
-Attach the callback function I<cb> to handle entity references that cannot
-be resolved otherwise (including ones that could be resolved except that
-their resolution is turned off by some option (see I<setOption>).
-I<cb> will be called like:
-
-    resolver(theEntityManager, entityName, system, public, isParam)
-
-And it must return either an open file handle, or a string, or undef.
-
-=item * B<addDefaultEntity>(I<string>)
-
-Modeled after an C<SGML> feature, this entity will be used if an attempt is
-made to expand a nonexistent entity.
-
-
-=for nobody ===================================================================
-
-=item * B<defineEntity>(I<$name,$valueType,$value,$sys,$pub,$notation,$isParam>)
-
-Associate the entity I<name> with the specified data. The argument are
-the same as returned by CPAN's C<XML::Parser>'s I<Entity> event, which
-reflects any XML ENTITY declaration in a DTD.
-I<sysid> can be any of:
-
-=over
-
-=item * a file or http or https URI fetched via C<curl>
-
-=item * a URI starting 'local:',
-searched for along the current path (see I<appendPath>)
-
-=item * a local file with no URI-style prefix,
-searched for along the current path (see I<appendPath>)
-
-=back
-
-
-=for nobody ===================================================================
-
-=item * B<openEntity>(I<name>)
-
-This is the internal method called when a start (or empty) tag is parsed.
-It stacks the element, xml:lang, and some other information, then issues
-the start-element event (and if the I<attrEvents> option is set,
-possibly also some number of following attribute events).
-
-=item * B<closeAllEntities>()
-
-Call I<closeEntity> until you can't any more.
-
-=item * B<closeEntity>()
-
-
-=item * B<getDepth>()
-
-Returns the number of open entities.
-
-=item * B<isOpen>(name)
-
-Returns true iff the (general) entity is open.
-
-=item * B<getCurrentName>()
-
-Returns the name of the currently-open entity.
-
-=item * B<getCurrentEntityDef {
-
-Returns the Entity Definition object for the currently-open entity.
-
-=item * B<getCurrentEntityFrame {
-
-Gets the Frame object representing the currently-open entity.
-
-=item * B<getCurrentEntityLoc>
-
-Returns ($name, $line, $char, $path) for the EntityFrame
-of the innermost open Entity.
-
-=item * B<getWholeEntityLoc>
-
-Returns a string describing the location in each open entity,
-from the innermost, progressing outward.
-Each line is equivalent to a result from I<getCurrentEntityLoc>.
-
-=back
-
-
-
-=for nobody ===================================================================
-
-=head1 Known bugs and limitations
-
-There is no way to take the current working directory out of the path
-used to resolve local-file entities.
-
-
-
-=head1 Related commands
-
-C<xmlOutput.pm> provides an API for managing well-formed output, such
-as maintaining the stack, handling escaping for content, attributes, PIs,
-and comments, etc. etc.
-
-C<FakeParser.pm> and C<YmlParser> use this package.
-
-
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License, with one additional restriction:
-
-For further information on
-the CCLI license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
 
 1;

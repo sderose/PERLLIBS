@@ -2,30 +2,7 @@
 #
 # TableSchema.pm (split from older TabularFormats.pm).
 #    (also includes package FieldDef)
-#
 # Written 2010-03-23 by Steven J. DeRose, as csvFormat.pm
-#     (many changes/improvements).
-# 2012-03-30 sjd: Rename to TabularFormats.pm, major reorg.
-# ...
-# 2013-02-06ff sjd: Don't call sjdUtils::setOptions("verbose").
-#     Work on -stripRecord.
-#     Break out DataSchema package, and tell it and DataSource what they need,
-#     so they don't have to know 'owner' any more. Clean up virtuals a bit.
-#     Also break out DataOptions and DataCurrent packages. Fix order of events
-#     in pull-parser interface. Format-support packages to separate file.
-#     Support repetition indicators on datatypes.
-# ...
-# 2017-04-19: Move DataSchema package to this separate file as TableSchema.
-#
-# To do:
-#     Why continuous (-v) warnings about re-adding same fields?
-#     Do something with date/time formats.
-#     Option to default specific fields.
-#
-# Low priority:
-#     Add compound-key-reifier to deriveField.
-#     Rotate embedded layer (esp. for SEXP, XML, JSON, etc.)
-#     Switch messaging to use sjdUtils?
 #
 use strict;
 use feature 'unicode_strings';
@@ -37,519 +14,20 @@ use sjdUtils;
 sjdUtils::try_module("Datatypes") || warn
     "Can't access sjd Datatypes module.\n";
 
-our $VERSION = "4.0";
+our %metadata = (
+    'title'        => "TableSchema",
+    'description'  => "",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2010-03-23",
+    'modified'     => "2021-09-16",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
 
-
-###############################################################################
-###############################################################################
-# Package FieldDef
-#
-# Manage per-field-type information for one field. Aggregated by TableSchema.
-# TabularFormats gets these from TableSchema, then modifies fields directly.
-#
-# Note: This does *not* include the field's number (order).
-#
-package FieldDef;
-
-sub FieldDef::new {
-    my ($class, $name, $ersatz) = @_;
-
-    my $self = {
-        # Where to find the field (not all always used)
-        fName        => $name || undef,      # Field name
-        fErsatz      => ($ersatz) ? 1:0,     # Was it created as error recovery?
-        fStart       => 0,                   # Starting column (optional)
-        fWidth       => 0,                   # Column width
-        fTruncate    => 0,                   # If over fWidth, truncate?
-
-        # Input processing and cleanup
-        fDefault     => undef,               # Value to load if missing (?)
-        fCharset     => "utf-8",             # Character encoding
-        fNilValueIn  => "",                  # Reserved "nil" value
-        fCallback    => undef,               # Last-minute callback
-
-        fSplitter    => undef,               # Regex to split() sub-fields
-        fSplitterC    => undef,              #     same, compiled
-        fJoiner      => undef,               # String to join() sub-fields
-
-        fDatatype    => "",                  # Datatypes.pm name for checking
-
-        # Output possibilities (see align(), below)
-        fAlign       => "",                  # l/c/r/d/a
-        fNilValueOut => "",                  # Write this for undef
-    };
-
-    bless $self, $class;
-    return $self;
-}
-
-# Mainly for COLUMNS, but anybody can use it.
-# Left, Center, Right, Dot, Auto, or "".
-#
-sub FieldDef::align {
-    my ($self, $value) = @_;
-    if (!defined $value) {                        # Undefined / nil
-        $value = $self->{fNilValueOut};
-    }
-
-    my $svalue = $value . "";
-    if ($self->{fWidth} <= 0) {                   # No width known
-        return($value);
-    }
-
-    my $needed = $self->{fWidth}-length($svalue); # How wide?
-    if ($needed == 0) {
-        return($svalue);
-    }
-    if ($needed < 0) {                            # Too wide
-        if ($self->{fTruncate}) {
-            $svalue = substr($svalue,0,$self->{fWidth});
-        }
-        return($svalue);
-    }
-                                                  # Room to pad it
-    if ($self->{fAlign} eq "L") {                   # Left-align
-        $svalue = $svalue . (" " x $needed);
-    }
-    elsif ($self->{fAlign} eq "C") {                # Center-align
-        my $still = $needed - ($needed/2);
-        $svalue = (" " x ($needed/2)) . $svalue . $still
-    }
-    elsif ($self->{fAlign} eq "R") {                # Right-align
-        $svalue = (" " x $needed) . $svalue;
-    }
-    elsif ($self->{fAlign} eq "D") {                # lame Decimal-align
-        my $ind = index($svalue, ".");
-        if ($ind>=0 && $ind<$self->{fWdith}/2) {
-            $needed = $self->{fWdith}/2 - $ind;
-            $svalue = (" " x $needed) . $svalue;
-        }
-    }
-    elsif ($self->{fAlign} eq "A") {                # Auto-align
-        if ($svalue =~ m/^\s*\d+(\.\d+)?/) {
-            $svalue = (" " x $needed) . $svalue;
-        }
-        else {
-            $svalue = $svalue . (" " x $needed);
-        }
-    }
-
-    return($svalue);
-} # align
-
-# End of FieldDef package.
-
-
-###############################################################################
-###############################################################################
-# Package TableSchema
-#
-# Manage fields: names, numbers, positions (stored in FieldDef objects)
-# Mostly, these methods just find the right FieldDef object by name or number,
-# then access its fields directly. FieldDef has few methods of its own.
-#
-package TableSchema;
-my $sch = "TableSchema";
-
-sub TableSchema::new {
-    my ($class, $logger) = @_;
-    my $self = {
-        # Refs to FieldDef objects define what a record can contain
-        #lg            => $logger ? $logger : new ,
-        fDefsByName   => {},
-        fDefsByNumber => [ "" ],        # [0] always unused. -> fDefs
-        nominalNumberOfFields => 0,     # Only used if setNFields
-    };
-
-    bless $self, $class;
-    return $self;
-}
-
-sub TableSchema::reset {
-    my ($self) = @_;
-    $self->fDefsByName   => {},
-    $self->fDefsByNumber => [ "" ],
-}
-
-sub TableSchema::addFieldIfNeeded {
-    my ($self, $name) = @_;
-    if ($self->{fDefsByName}->{$name}) { return; }
-    $self->appendField($name);
-}
-sub TableSchema::appendField {
-    my ($self, $name) = @_;
-    alogging::vMsg(1, "$sch:appendField called for '$name'.");
-    if (scalar(@{$self->{fDefsByNumber}} == "")) {  # [0] stays empty!
-        $self->{fDefsByNumber} = "";
-    }
-    my $fNum = $self->getNSchemaFields() + 1;
-    if (!$name) {
-        $name = "F_" . $fNum;
-    }
-    if (defined($self->{fDefsByName}->{$name})) {
-        alogging::eMsg(1,"$sch:appendField: '$name' already defined.\n");
-        return(0);
-    }
-    my $fDef = new FieldDef($name, 0);
-    $self->{fDefsByName}->{$name} = $fDef;
-    $self->{fDefsByNumber}->[$fNum] = $fDef;
-    return($fDef);
-}
-sub TableSchema::addField { # ???
-    my ($self, $name, $number) = @_;
-    if (!defined $name)   { $name = ''; }
-    if (!defined $number) { $number = $self->getNSchemaFields() + 1; }
-    alogging::vMsg(2, "addField: number $number, name '$name'");
-
-    if ($name && defined($self->{fDefsByName}->{$name})) {
-        alogging::eMsg(1,"$sch:addField: '$name' already defined.\n");
-        return(0);
-    }
-
-    my $fDef = new FieldDef($name);
-    $self->{fDefsByName}->{$name} = $fDef;
-    $self->{fDefsByNumber}->[$number] = $fDef;
-    return($self->getNSchemaFields());
-}
-
-# Find field object, given name or number.
-# For not-found errors, return undef and caller must fix.
-#
-sub TableSchema::getFieldDef {
-    my ($self, $fieldNN) = @_;
-    my $fDef = undef;
-    if ($fieldNN =~ m/^\s*\d+\s*$/) {             # By number
-        return($self->{fDefsByNumber}->[$fieldNN]);
-    }
-    else {                                        # By name
-        return($fDef = $self->{fDefsByName}->{$fieldNN});
-    }
-}
-sub TableSchema::schemaToString {
-    my ($self, $compact) = @_;
-    my @names = @{$self->getFieldNamesArray()};
-    my $format = ($compact) ? "%d:%s, " : "    %3d: '%s'\n";
-    my $buf = "";
-    for (my $i=1; $i<scalar @names; $i++) {
-        $buf .= sprintf($format, $i, $names[$i]);
-    }
-    return($buf);
-}
-sub TableSchema::getFieldDefByName {
-    my ($self, $fieldNN) = @_;
-    my $fDef = $self->{fDefsByName}->{$fieldNN};
-    return($fDef);
-}
-sub TableSchema::getFieldDefByNumber {
-    my ($self, $fieldNN) = @_;
-    if ($fieldNN !~ m/^\s*\d+\s*$/) { # Disable for speed
-        alogging::eMsg(0,"'$fieldNN' not numeric.");
-        return(undef);
-    }
-    my $ndefs = $self->getNSchemaFields();
-    while ($ndefs < $fieldNN) {
-        alogging::eMsg(0,"Field #'$fieldNN' not in schema (only $ndefs).");
-        $self->addField('f' . ($ndefs+1));
-        $ndefs = $self->getNSchemaFields();
-    }
-    my $fDef = $self->{fDefsByNumber}->[$fieldNN];
-    return($fDef);
-}
-
-# Set/get properties of a single FieldDef
-#
-sub TableSchema::setFieldName {
-    my ($self, $fieldNN, $newName) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    if (!$fDef) {
-        alogging::eMsg(-1,"Can't find field $fieldNN.");
-    }
-    if (!$self->isOkFieldName($newName)) {
-        alogging::eMsg(0,"Bad name '$newName' -- defaulted.");
-        $newName = "F_" . $fDef->getFieldNumber();
-    }
-    $fDef->{fName} = $newName;
-    return(1);
-}
-sub TableSchema::getFieldName {
-    my ($self, $fieldNN) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    return($fDef->{fName});
-}
-
-sub TableSchema::setFieldDatatype {
-    my ($self, $fieldNN, $newDtName) = @_;
-    if ($newDtName && !$self->{theDatatypes}->isKnownDatatype($newDtName)) {
-        alogging::eMsg(
-            0,"Unknown datatype for field '$fieldNN': '$newDtName'");
-        return(0);
-    }
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(0);
-    $fDef->{fDatatype} = $newDtName;
-    return(1);
-}
-sub TableSchema::getFieldDatatype {
-    my ($self, $fieldNN) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    return($fDef->{fDatatype});
-}
-
-sub TableSchema::setFieldDefault {
-    my ($self, $fieldNN, $newDefault) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    $fDef->{fDefault} = $newDefault;
-    return(1);
-}
-sub TableSchema::getFieldDefault {
-    my ($self, $fieldNN) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    return($fDef->{fDefault});
-}
-
-# Rudimentary support for one level of sub-fields (e.g., paragraphs inside
-# table cells, tokens inside a field, etc.
-#
-sub TableSchema::setFieldSplitter {
-    my ($self, $fieldNN, $splitterRegex, $joinerString) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(0);
-    $fDef->{fSplitter} = $splitterRegex;
-    $fDef->{fSplitterC} = qr/$splitterRegex/;
-    $fDef->{fJoiner} = $joinerString;
-    return(1);
-}
-
-
-# A field callback should always return an array of fields.
-# For example the 'Encoding:' MIME header often has a 'Charset' field within.
-# Or, the callback can be used to do normalization such as case-folding, etc.
-# Called from postProcessFields() in each implementation.
-#
-sub TableSchema::setFieldCallback {
-    my ($self, $fieldNN, $cb) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(0);
-    $fDef->{fCallback} = $cb;
-    return(1);
-}
-
-
-###############################################################################
-# Manage properties and order of the whole set of fields.
-#
-sub TableSchema::setNFields {
-    my ($self, $n) = @_;
-    my $nf = $self->getNSchemaFields();
-    while ($nf < $n) {
-        $nf++;
-        $self->appendField("");
-    }
-    $self->nominalNumberOfFields = $n;
-}
-sub TableSchema::getNSchemaFields {
-    my ($self) = @_;
-    my $nfNumbers = scalar(@{$self->{fDefsByNumber}}) - 1; # [0] unused!
-    my $nfNames = scalar(keys(%{$self->{fDefsByName}}));
-    ($nfNumbers == $nfNames) ||
-        alogging::eMsg(1, "field-count: byNumber $nfNumbers, " .
-            "byName $nfNames");
-    return($nfNumbers);
-}
-
-sub TableSchema::setFieldNumber {
-    my ($self, $fieldNN, $newNumber) = @_;
-    if ($newNumber<1) {
-        alogging::eMsg(0,"Bad field number '$newNumber'");
-        return(undef);
-    }
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    my $oldNumber = $self->getFieldNumber($fieldNN);
-    splice(@{$self->{fDefsByNumber}},$oldNumber,1);
-    splice(@{$self->{fDefsByNumber}},$newNumber,0,$fDef);
-    return($newNumber);
-}
-sub TableSchema::getFieldNumber {
-    my ($self, $fieldNN) = @_;
-    if ($fieldNN =~ m/^\s*\d+\s*$/) { return($fieldNN); }
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    my $nf = $self->getNSchemaFields();
-    for my $i (1..$nf) {
-        my $iDef = $self->{fDefsByNumber}->[$i];
-        if ($iDef->{fName} eq $fDef->{fName}) {
-            return($i);
-        }
-    }
-    return(undef);
-}
-
-sub TableSchema::setFieldNamesFromArray {
-    my ($self, $aRef) = @_;
-    for (my $i=1; $i<scalar(@{$aRef}); $i++) {
-        my $name = $aRef->[$i];
-        if ($name) {
-            my $fDef = $self->{fDefsByNumber}->[$i];
-            if (!$fDef) {
-                $fDef = new FieldDef($name);
-                $self->{fDefsByNumber}->[$i] = $fDef;
-                $self->{fDefsByName}->{$name} = $fDef;
-            }
-            else {
-                $fDef->{fName} = $name;
-            }
-        }
-        else {
-            alogging::vMsg(0, "$sch:setFieldNamesFromArray: [$i] is nil.");
-        }
-    }
-    return(scalar(@{$aRef}));
-}
-sub TableSchema::getFieldNamesArray {
-    my ($self) = @_;
-    if (!$self->{fDefsByNumber}) {
-        alogging::eMsg(0,"Nobody there.");
-        return("");
-    }
-    my @names = ("");
-    my $nf = $self->getNSchemaFields();
-    for my $i (1..$nf) {
-        my $fDef = $self->{fDefsByNumber}->[$i];
-        if (!$fDef) {
-            alogging::eMsg(0,"Missing fDef #$i.");
-            my $name = "F_$i";
-            my $fDef = new FieldDef($name);
-            $self->{fDefsByName}->{$name} = $fDef;
-            $self->{fDefsByNumber}->[$i] = $fDef;
-        }
-        push @names, $fDef->{fName}; # Includes empty [0]
-    }
-    return(\@names);
-}
-
-# Re. field positions: Do they need to be in order? Doesn't seem like it;
-# only meaningful in COLUMNS, and you might want order for something else.
-# Just have to be careful to get COLUMNS output right.
-#
-sub TableSchema::setFieldPositions {
-    my ($self, $starts) = @_;
-    my $laterStart = $starts->[-1] + 8; # Meh
-    for (my $i=scalar(@{$starts})-1; $i>0; $i--) {
-        my $width = $laterStart - $starts->[$i];
-        if ($width <= 0) {
-            alogging::eMsg(0,"$sch:Out of order.");
-            $width = 1;
-        }
-        $self->setFieldPosition($i, $starts->[$i], $width);
-        $laterStart = $starts->[$i];
-    }
-}
-
-sub TableSchema::setFieldPosition {
-    my ($self, $fieldNN, $start, $width, $align) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    my $nf = $self->getNSchemaFields();
-
-    if (!$width) {                      # Pick a default width
-        my $nearestFollowingStart = 99999999;
-        for (my $i=1; $i<=$nf; $i++) {
-            my $iDef = $self->{fDefsByNumber}->[$i];
-            if ($iDef->{fStart} > $start &&
-                $iDef->{fStart} < $nearestFollowingStart) {
-                $nearestFollowingStart = $iDef->{fStart};
-            }
-        }
-        if ($nearestFollowingStart> -1) {
-            $width = $nearestFollowingStart - $start;
-        }
-    }
-    else {                              # Check for column conflict
-        for (my $i=1; $i<=$nf; $i++) {
-            my $iDef = $self->{fDefsByNumber}->[$i];
-            next if ($iDef == $fDef);
-            my $istart = $iDef->{fStart};
-            my $iwidth = $iDef->{fWidth};
-            if ($istart < $start+$width &&
-                $istart+$iwidth > $start) { # overlap
-                return(0);
-            }
-        }
-    }
-    $fDef->{fStart} = $start;
-    $fDef->{fWidth} = $width;
-    if (!$align || $align =~ m/^[LRCDA]/i) {
-        $fDef->{fAlign} = $align;
-    }
-    else {
-        alogging::eMsg(
-            0, "Bad 'align' argument '$align' for field '$fieldNN'");
-    }
-    return(1);
-}
-
-sub TableSchema::getFieldPosition {
-    my ($self, $fieldNN) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    return($fDef->{fStart}, $fDef->{fWidth}, $fDef->{fAlign});
-}
-
-sub TableSchema::setFieldNumbersByPosition {
-    my ($self) = @_;
-    my @fDefArray = @{$self->{fDefsByNumber}};
-    shift @fDefArray;
-    @fDefArray = sort { return($a->{fStart} <=> $b->{fStart}); } @fDefArray;
-    unshift @fDefArray, undef;
-    $self->{fDefsByNumber} = \@fDefArray;
-}
-
-sub TableSchema::getAvailableWidth {
-    my ($self, $fieldNN) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(0);
-    my $near = $self->getNearestFollowingFieldDef($fieldNN);
-    ($near) || return(0);
-    return($near->{fStart} - $fDef->{fStart});
-}
-
-sub TableSchema::getNearestFollowingFieldDef {
-    my ($self, $fieldNN) = @_;
-    my $fDef = $self->getFieldDef($fieldNN);
-    ($fDef) || return(undef);
-    my $nf = $self->getNSchemaFields();
-    my $near = undef;
-    for (my $i=1; $i<=$nf; $i++) {
-        my $iDef = $self->{fDefsByNumber}->[$i];
-        if ($iDef->{fStart} &&
-            (!$near || ($iDef->{fStart} < $near->{fStart})) &&
-            $iDef->{fStart} > $fDef->{fStart}) {
-            $near = $iDef;
-        }
-    }
-    return($near);
-}
-
-# End package TableSchema
-
-
-###############################################################################
-###############################################################################
-#
-if (!caller) {
-    system "perldoc $0";
-}
-1;
-
-
-###############################################################################
-###############################################################################
-#
 
 =pod
 
@@ -574,8 +52,6 @@ It knows the name, datatype, preferred width and justification, and other
 information about a given field, but not about it's place in the record
 (re. which see I<TableSchema>, previous).
 
-
-=for nobody ===================================================================
 
 =head1 Package: TableSchema
 
@@ -798,20 +274,14 @@ the result if you use both is undefined.
 =back
 
 
-=for nobody ===================================================================
-
 =head1 Internal package: FieldDef
 
 
-
-=for nobody ===================================================================
 
 =head1 Related commands
 
 TabularFormats.pm.
 
-
-=for nobody ===================================================================
 
 =head1 Known bugs and limitations
 
@@ -820,6 +290,35 @@ TabularFormats.pm.
 =item * Datatype checking is experimental.
 
 =back
+
+
+=head1 History
+
+# Written 2010-03-23 by Steven J. DeRose, as csvFormat.pm
+#     (many changes/improvements).
+# 2012-03-30 sjd: Rename to TabularFormats.pm, major reorg.
+# ...
+# 2013-02-06ff sjd: Don't call sjdUtils::setOptions("verbose").
+#     Work on -stripRecord.
+#     Break out DataSchema package, and tell it and DataSource what they need,
+#     so they don't have to know 'owner' any more. Clean up virtuals a bit.
+#     Also break out DataOptions and DataCurrent packages. Fix order of events
+#     in pull-parser interface. Format-support packages to separate file.
+#     Support repetition indicators on datatypes.
+# ...
+# 2017-04-19: Move DataSchema package to this separate file as TableSchema.
+
+
+=head1 To do
+
+#     Why continuous (-v) warnings about re-adding same fields?
+#     Do something with date/time formats.
+#     Option to default specific fields.
+#
+# Low priority:
+#     Add compound-key-reifier to deriveField.
+#     Rotate embedded layer (esp. for SEXP, XML, JSON, etc.)
+#     Switch messaging to use sjdUtils?
 
 
 =head1 Ownership
@@ -831,3 +330,507 @@ this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
 For the most recent version, see L<http://www.derose.net/steve/utilities/>.
 
 =cut
+
+
+###############################################################################
+# Package FieldDef
+#
+# Manage per-field-type information for one field. Aggregated by TableSchema.
+# TabularFormats gets these from TableSchema, then modifies fields directly.
+#
+# Note: This does *not* include the field's number (order).
+#
+package FieldDef;
+
+sub FieldDef::new {
+    my ($class, $name, $ersatz) = @_;
+
+    my $self = {
+        # Where to find the field (not all always used)
+        fName        => $name || undef,      # Field name
+        fErsatz      => ($ersatz) ? 1:0,     # Was it created as error recovery?
+        fStart       => 0,                   # Starting column (optional)
+        fWidth       => 0,                   # Column width
+        fTruncate    => 0,                   # If over fWidth, truncate?
+
+        # Input processing and cleanup
+        fDefault     => undef,               # Value to load if missing (?)
+        fCharset     => "utf-8",             # Character encoding
+        fNilValueIn  => "",                  # Reserved "nil" value
+        fCallback    => undef,               # Last-minute callback
+
+        fSplitter    => undef,               # Regex to split() sub-fields
+        fSplitterC    => undef,              #     same, compiled
+        fJoiner      => undef,               # String to join() sub-fields
+
+        fDatatype    => "",                  # Datatypes.pm name for checking
+
+        # Output possibilities (see align(), below)
+        fAlign       => "",                  # l/c/r/d/a
+        fNilValueOut => "",                  # Write this for undef
+    };
+
+    bless $self, $class;
+    return $self;
+}
+
+# Mainly for COLUMNS, but anybody can use it.
+# Left, Center, Right, Dot, Auto, or "".
+#
+sub FieldDef::align {
+    my ($self, $value) = @_;
+    if (!defined $value) {                        # Undefined / nil
+        $value = $self->{fNilValueOut};
+    }
+
+    my $svalue = $value . "";
+    if ($self->{fWidth} <= 0) {                   # No width known
+        return($value);
+    }
+
+    my $needed = $self->{fWidth}-length($svalue); # How wide?
+    if ($needed == 0) {
+        return($svalue);
+    }
+    if ($needed < 0) {                            # Too wide
+        if ($self->{fTruncate}) {
+            $svalue = substr($svalue,0,$self->{fWidth});
+        }
+        return($svalue);
+    }
+                                                  # Room to pad it
+    if ($self->{fAlign} eq "L") {                   # Left-align
+        $svalue = $svalue . (" " x $needed);
+    }
+    elsif ($self->{fAlign} eq "C") {                # Center-align
+        my $still = $needed - ($needed/2);
+        $svalue = (" " x ($needed/2)) . $svalue . $still
+    }
+    elsif ($self->{fAlign} eq "R") {                # Right-align
+        $svalue = (" " x $needed) . $svalue;
+    }
+    elsif ($self->{fAlign} eq "D") {                # lame Decimal-align
+        my $ind = index($svalue, ".");
+        if ($ind>=0 && $ind<$self->{fWdith}/2) {
+            $needed = $self->{fWdith}/2 - $ind;
+            $svalue = (" " x $needed) . $svalue;
+        }
+    }
+    elsif ($self->{fAlign} eq "A") {                # Auto-align
+        if ($svalue =~ m/^\s*\d+(\.\d+)?/) {
+            $svalue = (" " x $needed) . $svalue;
+        }
+        else {
+            $svalue = $svalue . (" " x $needed);
+        }
+    }
+
+    return($svalue);
+} # align
+
+# End of FieldDef package.
+
+
+###############################################################################
+# Package TableSchema
+#
+# Manage fields: names, numbers, positions (stored in FieldDef objects)
+# Mostly, these methods just find the right FieldDef object by name or number,
+# then access its fields directly. FieldDef has few methods of its own.
+#
+package TableSchema;
+my $sch = "TableSchema";
+
+sub TableSchema::new {
+    my ($class, $logger) = @_;
+    my $self = {
+        # Refs to FieldDef objects define what a record can contain
+        #lg            => $logger ? $logger : new ,
+        fDefsByName   => {},
+        fDefsByNumber => [ "" ],        # [0] always unused. -> fDefs
+        nominalNumberOfFields => 0,     # Only used if setNFields
+    };
+
+    bless $self, $class;
+    return $self;
+}
+
+sub TableSchema::reset {
+    my ($self) = @_;
+    $self->fDefsByName   => {},
+    $self->fDefsByNumber => [ "" ],
+}
+
+sub TableSchema::addFieldIfNeeded {
+    my ($self, $name) = @_;
+    if ($self->{fDefsByName}->{$name}) { return; }
+    $self->appendField($name);
+}
+sub TableSchema::appendField {
+    my ($self, $name) = @_;
+    alogging::vMsg(1, "$sch:appendField called for '$name'.");
+    if (scalar(@{$self->{fDefsByNumber}} == "")) {  # [0] stays empty!
+        $self->{fDefsByNumber} = "";
+    }
+    my $fNum = $self->getNSchemaFields() + 1;
+    if (!$name) {
+        $name = "F_" . $fNum;
+    }
+    if (defined($self->{fDefsByName}->{$name})) {
+        alogging::eMsg(1,"$sch:appendField: '$name' already defined.\n");
+        return(0);
+    }
+    my $fDef = new FieldDef($name, 0);
+    $self->{fDefsByName}->{$name} = $fDef;
+    $self->{fDefsByNumber}->[$fNum] = $fDef;
+    return($fDef);
+}
+sub TableSchema::addField { # ???
+    my ($self, $name, $number) = @_;
+    if (!defined $name)   { $name = ''; }
+    if (!defined $number) { $number = $self->getNSchemaFields() + 1; }
+    alogging::vMsg(2, "addField: number $number, name '$name'");
+
+    if ($name && defined($self->{fDefsByName}->{$name})) {
+        alogging::eMsg(1,"$sch:addField: '$name' already defined.\n");
+        return(0);
+    }
+
+    my $fDef = new FieldDef($name);
+    $self->{fDefsByName}->{$name} = $fDef;
+    $self->{fDefsByNumber}->[$number] = $fDef;
+    return($self->getNSchemaFields());
+}
+
+# Find field object, given name or number.
+# For not-found errors, return undef and caller must fix.
+#
+sub TableSchema::getFieldDef {
+    my ($self, $fieldNN) = @_;
+    my $fDef = undef;
+    if ($fieldNN =~ m/^\s*\d+\s*$/) {             # By number
+        return($self->{fDefsByNumber}->[$fieldNN]);
+    }
+    else {                                        # By name
+        return($fDef = $self->{fDefsByName}->{$fieldNN});
+    }
+}
+sub TableSchema::schemaToString {
+    my ($self, $compact) = @_;
+    my @names = @{$self->getFieldNamesArray()};
+    my $format = ($compact) ? "%d:%s, " : "    %3d: '%s'\n";
+    my $buf = "";
+    for (my $i=1; $i<scalar @names; $i++) {
+        $buf .= sprintf($format, $i, $names[$i]);
+    }
+    return($buf);
+}
+sub TableSchema::getFieldDefByName {
+    my ($self, $fieldNN) = @_;
+    my $fDef = $self->{fDefsByName}->{$fieldNN};
+    return($fDef);
+}
+sub TableSchema::getFieldDefByNumber {
+    my ($self, $fieldNN) = @_;
+    if ($fieldNN !~ m/^\s*\d+\s*$/) { # Disable for speed
+        alogging::eMsg(0,"'$fieldNN' not numeric.");
+        return(undef);
+    }
+    my $ndefs = $self->getNSchemaFields();
+    while ($ndefs < $fieldNN) {
+        alogging::eMsg(0,"Field #'$fieldNN' not in schema (only $ndefs).");
+        $self->addField('f' . ($ndefs+1));
+        $ndefs = $self->getNSchemaFields();
+    }
+    my $fDef = $self->{fDefsByNumber}->[$fieldNN];
+    return($fDef);
+}
+
+# Set/get properties of a single FieldDef
+#
+sub TableSchema::setFieldName {
+    my ($self, $fieldNN, $newName) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    if (!$fDef) {
+        alogging::eMsg(-1,"Can't find field $fieldNN.");
+    }
+    if (!$self->isOkFieldName($newName)) {
+        alogging::eMsg(0,"Bad name '$newName' -- defaulted.");
+        $newName = "F_" . $fDef->getFieldNumber();
+    }
+    $fDef->{fName} = $newName;
+    return(1);
+}
+sub TableSchema::getFieldName {
+    my ($self, $fieldNN) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    return($fDef->{fName});
+}
+
+sub TableSchema::setFieldDatatype {
+    my ($self, $fieldNN, $newDtName) = @_;
+    if ($newDtName && !$self->{theDatatypes}->isKnownDatatype($newDtName)) {
+        alogging::eMsg(
+            0,"Unknown datatype for field '$fieldNN': '$newDtName'");
+        return(0);
+    }
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(0);
+    $fDef->{fDatatype} = $newDtName;
+    return(1);
+}
+sub TableSchema::getFieldDatatype {
+    my ($self, $fieldNN) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    return($fDef->{fDatatype});
+}
+
+sub TableSchema::setFieldDefault {
+    my ($self, $fieldNN, $newDefault) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    $fDef->{fDefault} = $newDefault;
+    return(1);
+}
+sub TableSchema::getFieldDefault {
+    my ($self, $fieldNN) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    return($fDef->{fDefault});
+}
+
+# Rudimentary support for one level of sub-fields (e.g., paragraphs inside
+# table cells, tokens inside a field, etc.
+#
+sub TableSchema::setFieldSplitter {
+    my ($self, $fieldNN, $splitterRegex, $joinerString) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(0);
+    $fDef->{fSplitter} = $splitterRegex;
+    $fDef->{fSplitterC} = qr/$splitterRegex/;
+    $fDef->{fJoiner} = $joinerString;
+    return(1);
+}
+
+# A field callback should always return an array of fields.
+# For example the 'Encoding:' MIME header often has a 'Charset' field within.
+# Or, the callback can be used to do normalization such as case-folding, etc.
+# Called from postProcessFields() in each implementation.
+#
+sub TableSchema::setFieldCallback {
+    my ($self, $fieldNN, $cb) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(0);
+    $fDef->{fCallback} = $cb;
+    return(1);
+}
+
+
+###############################################################################
+# Manage properties and order of the whole set of fields.
+#
+sub TableSchema::setNFields {
+    my ($self, $n) = @_;
+    my $nf = $self->getNSchemaFields();
+    while ($nf < $n) {
+        $nf++;
+        $self->appendField("");
+    }
+    $self->nominalNumberOfFields = $n;
+}
+sub TableSchema::getNSchemaFields {
+    my ($self) = @_;
+    my $nfNumbers = scalar(@{$self->{fDefsByNumber}}) - 1; # [0] unused!
+    my $nfNames = scalar(keys(%{$self->{fDefsByName}}));
+    ($nfNumbers == $nfNames) ||
+        alogging::eMsg(1, "field-count: byNumber $nfNumbers, " .
+            "byName $nfNames");
+    return($nfNumbers);
+}
+
+sub TableSchema::setFieldNumber {
+    my ($self, $fieldNN, $newNumber) = @_;
+    if ($newNumber<1) {
+        alogging::eMsg(0,"Bad field number '$newNumber'");
+        return(undef);
+    }
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    my $oldNumber = $self->getFieldNumber($fieldNN);
+    splice(@{$self->{fDefsByNumber}},$oldNumber,1);
+    splice(@{$self->{fDefsByNumber}},$newNumber,0,$fDef);
+    return($newNumber);
+}
+sub TableSchema::getFieldNumber {
+    my ($self, $fieldNN) = @_;
+    if ($fieldNN =~ m/^\s*\d+\s*$/) { return($fieldNN); }
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    my $nf = $self->getNSchemaFields();
+    for my $i (1..$nf) {
+        my $iDef = $self->{fDefsByNumber}->[$i];
+        if ($iDef->{fName} eq $fDef->{fName}) {
+            return($i);
+        }
+    }
+    return(undef);
+}
+
+sub TableSchema::setFieldNamesFromArray {
+    my ($self, $aRef) = @_;
+    for (my $i=1; $i<scalar(@{$aRef}); $i++) {
+        my $name = $aRef->[$i];
+        if ($name) {
+            my $fDef = $self->{fDefsByNumber}->[$i];
+            if (!$fDef) {
+                $fDef = new FieldDef($name);
+                $self->{fDefsByNumber}->[$i] = $fDef;
+                $self->{fDefsByName}->{$name} = $fDef;
+            }
+            else {
+                $fDef->{fName} = $name;
+            }
+        }
+        else {
+            alogging::vMsg(0, "$sch:setFieldNamesFromArray: [$i] is nil.");
+        }
+    }
+    return(scalar(@{$aRef}));
+}
+sub TableSchema::getFieldNamesArray {
+    my ($self) = @_;
+    if (!$self->{fDefsByNumber}) {
+        alogging::eMsg(0,"Nobody there.");
+        return("");
+    }
+    my @names = ("");
+    my $nf = $self->getNSchemaFields();
+    for my $i (1..$nf) {
+        my $fDef = $self->{fDefsByNumber}->[$i];
+        if (!$fDef) {
+            alogging::eMsg(0,"Missing fDef #$i.");
+            my $name = "F_$i";
+            my $fDef = new FieldDef($name);
+            $self->{fDefsByName}->{$name} = $fDef;
+            $self->{fDefsByNumber}->[$i] = $fDef;
+        }
+        push @names, $fDef->{fName}; # Includes empty [0]
+    }
+    return(\@names);
+}
+
+# Re. field positions: Do they need to be in order? Doesn't seem like it;
+# only meaningful in COLUMNS, and you might want order for something else.
+# Just have to be careful to get COLUMNS output right.
+#
+sub TableSchema::setFieldPositions {
+    my ($self, $starts) = @_;
+    my $laterStart = $starts->[-1] + 8; # Meh
+    for (my $i=scalar(@{$starts})-1; $i>0; $i--) {
+        my $width = $laterStart - $starts->[$i];
+        if ($width <= 0) {
+            alogging::eMsg(0,"$sch:Out of order.");
+            $width = 1;
+        }
+        $self->setFieldPosition($i, $starts->[$i], $width);
+        $laterStart = $starts->[$i];
+    }
+}
+
+sub TableSchema::setFieldPosition {
+    my ($self, $fieldNN, $start, $width, $align) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    my $nf = $self->getNSchemaFields();
+
+    if (!$width) {                      # Pick a default width
+        my $nearestFollowingStart = 99999999;
+        for (my $i=1; $i<=$nf; $i++) {
+            my $iDef = $self->{fDefsByNumber}->[$i];
+            if ($iDef->{fStart} > $start &&
+                $iDef->{fStart} < $nearestFollowingStart) {
+                $nearestFollowingStart = $iDef->{fStart};
+            }
+        }
+        if ($nearestFollowingStart> -1) {
+            $width = $nearestFollowingStart - $start;
+        }
+    }
+    else {                              # Check for column conflict
+        for (my $i=1; $i<=$nf; $i++) {
+            my $iDef = $self->{fDefsByNumber}->[$i];
+            next if ($iDef == $fDef);
+            my $istart = $iDef->{fStart};
+            my $iwidth = $iDef->{fWidth};
+            if ($istart < $start+$width &&
+                $istart+$iwidth > $start) { # overlap
+                return(0);
+            }
+        }
+    }
+    $fDef->{fStart} = $start;
+    $fDef->{fWidth} = $width;
+    if (!$align || $align =~ m/^[LRCDA]/i) {
+        $fDef->{fAlign} = $align;
+    }
+    else {
+        alogging::eMsg(
+            0, "Bad 'align' argument '$align' for field '$fieldNN'");
+    }
+    return(1);
+}
+
+sub TableSchema::getFieldPosition {
+    my ($self, $fieldNN) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    return($fDef->{fStart}, $fDef->{fWidth}, $fDef->{fAlign});
+}
+
+sub TableSchema::setFieldNumbersByPosition {
+    my ($self) = @_;
+    my @fDefArray = @{$self->{fDefsByNumber}};
+    shift @fDefArray;
+    @fDefArray = sort { return($a->{fStart} <=> $b->{fStart}); } @fDefArray;
+    unshift @fDefArray, undef;
+    $self->{fDefsByNumber} = \@fDefArray;
+}
+
+sub TableSchema::getAvailableWidth {
+    my ($self, $fieldNN) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(0);
+    my $near = $self->getNearestFollowingFieldDef($fieldNN);
+    ($near) || return(0);
+    return($near->{fStart} - $fDef->{fStart});
+}
+
+sub TableSchema::getNearestFollowingFieldDef {
+    my ($self, $fieldNN) = @_;
+    my $fDef = $self->getFieldDef($fieldNN);
+    ($fDef) || return(undef);
+    my $nf = $self->getNSchemaFields();
+    my $near = undef;
+    for (my $i=1; $i<=$nf; $i++) {
+        my $iDef = $self->{fDefsByNumber}->[$i];
+        if ($iDef->{fStart} &&
+            (!$near || ($iDef->{fStart} < $near->{fStart})) &&
+            $iDef->{fStart} > $fDef->{fStart}) {
+            $near = $iDef;
+        }
+    }
+    return($near);
+}
+
+# End package TableSchema
+
+
+###############################################################################
+#
+if (!caller) {
+    system "perldoc $0";
+}
+
+1;

@@ -1,23 +1,729 @@
 #!/usr/bin/perl -w
 #
 # Tokenize.pm: Generic tokenizer
-#
 # 2012-08-22ff: Written by Steven J. DeRose, based on
-#     variations in tuples, vocab, volsunga, etc. Rationalize....
-# 2012-08-29 sjd: Change option values from strings to numbers. Profile a bit.
-#     Fix some regexes.
-# 2012-09-04f sjd: Fix and doc ucc unify values and inheritance. Use in 'vocab'.
-#     Factor out more regexes, and precompile for speed. Rest of currency.
-#     Provide API for doing normalizing but not tokenizing
-# 2012-09-10 sjd: break at = : ... emdash regardless of T_HYPHEN.
-# 2013-08-29: Comment out digit->9 change in normalize(). Improve regexes
-#     for percent, fraction, etc.
-# 2014-04-10: Add temporal words. Improve abbreviation-detection (attach periods).
-#     Change numerics to default to 'keep', not 'unify'.
-# 2015-02-25: Speedup, cleanup. Add contraction lists. In progress.
-# 2015-06-08: Get working again.
 #
-# More cases:
+use strict;
+use Getopt::Long;
+use Encode;
+use charnames ':full';
+use Unicode::Normalize;
+use Unicode::Normalize 'decompose';
+
+use sjdUtils;
+
+our %metadata = (
+    'title'        => "Tokenize",
+    'description'  => "",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5.18",
+    'created'      => "2012-08-22",
+    'modified'     => "2021-09-16",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
+
+
+=pod
+
+=head1 Usage
+
+This is a natural-language tokenizer, intended as a front-end to NLP
+software, particularly lexico-statistical calculators.
+It can also be used to normalize text without tokenizing, or
+as a preprocessor for more extensive NLP stacks.
+
+It is particularly focused on handling a few complex issues well, which I
+think especially iomportant when deriving lexicostatistics (less so when
+simply cranking out processed texts):
+
+=over
+
+=item * Character represented in special ways, such as %xx codes used in URIs;
+character references like &quot; or &#65; in HTML and XML, and so on. These are
+very often found in lexical databases, and are often handled incorrectly.
+
+=item * Less-common characters such as ligatures, accents,
+non-Latin digits, fractions, hyphen and dashess, quotes, and spaces, presentation variants,
+angstrom vs. a-with-ring, etc.
+
+Very many of the NLP systems I've examined fail on quite common cases such as
+"hard" spaces, ligatures, curly quotes, and em-dashes.
+That seems to me sloppy as well as parochial.
+
+=item * Many kinds of non-word tokens, such as URIs, Twitter hashtags, userids, and jargon
+(Twitter has gotten more attention, no doubt to to its overall popularity);,
+numbers, dates, times, email addresses, etc.
+
+=item * Contemporary conventions such as emphasis via special puntuations (*word*),
+or via repeating letters (aaaarrrrrggggghhhhhh, hahahaha).
+
+=item * Choice of how to divide edge cases such as contractions and possessives
+(with and without explicit apostrophes), hyphenated words
+(not the same thing as em-dash-separated clauses), etc.
+
+=item * When collecting or measuring vocabulary,
+options to filter out unwanted tokens are very useful.
+For example, the non-word types already mentioned are important for some purposes, but
+not for others. Words already listed in a given dictionary(s) can be discarded. Tokens
+in all lower, all upper, title, camel, or other case patterns; numers;
+tokens containing special characters, long or short tokens, etc. There are many filtering
+options, so you can easily winnow a list down to just what you want.
+
+=back
+
+=head2 Example
+
+  use Tokenizer;
+  my $myTok = new Tokenizer("characters");
+  $myTok->setOption("Uppercase_Letter", "lower");
+  while (my $rec = <>) {
+      my @tokens = @{myTok->tokenize($rec)};
+      for my $token (@tokens) {
+          $counts{$token}++;
+      }
+  }
+
+
+=head1 The process
+
+There are several steps to the process of tokenizing, each controlled
+by various options:
+
+    * Expand special character codes
+    * Fix character-set issues
+    * Shorten long repetition sequences
+    * Recognize non-word tokens (numbers, date, URIs, emoticons,...)
+    * Generate the actual tokenized result.
+
+Option names appear in B<BOLD>, and values in I<ITALIC> below.
+The type of value expected is shown in (parentheses): either (boolean), (int),
+or (disp), unless otherwise described.
+
+
+=head2 1: Expand escaped characters
+
+These options all begin with "X_" and all take (boolean) values,
+for whether to expand them to a literal character.
+
+=over
+
+=item * B<X_BACKSLASH> -- A lot of cases are covered.
+
+=item * B<X_URI> -- %-escapes as used in URIs.
+Not to be confused with the B<T_URI> option for tokenizing (see below).
+
+=item * B<X_ENTITY> -- Covers HTML and XML named entities and
+numeric character references (assuming the caller didn't already parse and
+expand them).
+
+=back
+
+
+=head2 2: Normalize the character set
+
+These options are distinguished by being named in Title_Case with underscores
+(following the Perl convention for Unicode character class names.
+ See L<http://unicode.org/reports/tr44/tr44-4.html#General_Category_Values>.
+
+This all assumes that the data is already Unicode, so be careful of CP1252.
+
+=over
+
+=item * B<Ascii_Only> (boolean) -- a special case.
+Discards all non-ASCII characters, and turns control characters (such as
+CR, LF, FF, VT, and TAB) to space. If you specify this, you should not specify
+other character set normalization options.
+
+=back
+
+All other character set normalization options are of type (disp):
+
+(disp) values that apply to any character category at all:
+  "keep"      -- Don't change the characters
+  "delete"    -- Delete the characters entirely
+  "space"     -- Replace the characters with a space
+  "unify"     -- Convert all matches to a single character (see below)
+
+(disp) values only for Number and its subtypes:
+  "value"     -- Replace with the value
+
+(disp) values only for Letter and its subtypes:
+  "upper"     -- Force to upper-case
+  "lower"     -- Force to lower-case
+  "strip"     -- Decompose (NFKD) and then strip any diacritics
+  "decompose" -- Decompose (NFKD) into component characters
+
+I<Letter> and its subcategories default to C<keep>; all other
+character categories default to C<unify> (see below for the
+meaning of "unify" for each case).
+
+B<Note>: A character may have multiple decompositions, or may be
+undecomposable. The resulting string will also be in Compatibility decomposition
+(see L<http://unicode.org/reports/tr15/>) and
+Unicode's Canonical Ordering Behavior. Compatibility decomposition combines
+stylistic variations such as font, breaking, cursive, circled, width,
+rotation, superscript, squared, fractions, I<some> ligatures
+(for example ff but not oe), and pairs like angstrong vs. A with ring,
+ohm vs omega, long s vs. s.
+
+C<#unify> changes each character of the given class
+to one particular ASCII character to represent the class (this is useful for finding
+interesting patterns of use):
+
+  Letter                  unifies to "A"
+  Cased_Letter            unifies to "A"
+  Uppercase_Letter        unifies to "A"
+  Lowercase_Letter        unifies to "a"
+  Titlecase_Letter        unifies to "Fi"
+  Modifier_Letter         unifies to "A"
+  Other_Letter            unifies to "A"
+
+  Mark                    unifies to " "
+  Nonspacing_Mark         unifies to " "
+  Spacing_Mark            unifies to " "
+  Enclosing_Mark          unifies to " "
+
+  Number                  unifies to "9"
+  Decimal_Number          unifies to "9"
+  Letter_Number           unifies to "9"
+  Other_Number            unifies to "9"
+
+  Punctuation             unifies to "."
+  Connector_Punctuation   unifies to "_"
+  Dash_Punctuation        unifies to "-"
+  Open_Punctuation        unifies to "("
+  Close_Punctuation       unifies to ")"
+  Initial_Punctuation     unifies to "`"
+  Final_Punctuation       unifies to "'"
+  Other_Punctuation       unifies to "*"
+
+  Symbol                  unifies to "#"
+  Math_Symbol             unifies to "="
+  Currency_Symbol         unifies to "\$"
+  Modifier_Symbol         unifies to "#"
+  Other_Symbol            unifies to "#"
+
+  Separator               unifies to " "
+  Space_Separator         unifies to " "
+  Line_Separator          unifies to " "
+  Paragraph_Separator     unifies to " "
+
+  Other                   unifies to "?"
+  Control                 unifies to "?"
+      (includes > 64 characters. For example, U+00A0.
+  Format                  unifies to "?"
+  Surrogate               unifies to "?"
+  Private_Use             unifies to "?"
+  Unassigned              unifies to "?"
+
+C<unify> can also be used for the Non-word token options (see below); in that
+case, each option has a particular value to which matching I<tokens> unify.
+
+Setting the option for a cover category (such as I<Letter>) is merely shorthand for
+setting all its subcategories to that value. Some or all subcategories can
+still be reset afterward, but any I<earlier> setting for a subcategory
+is discarded when you set its cover category.
+
+To get a list of the category options run C<Tokenizer.pm -list>.
+
+The following character set normalization options can also be used
+(but are not Unicode General Categories):
+
+=over
+
+=item * B<Accent> --
+These are related to Unicode B<Nonspacing_Mark>,
+but that also would include vowel marks, which this doesn't.
+I<#decompose> and I<strip> are important value for this option:
+the format splits a composed letter+diacritic or similar combination
+into its component parts; the latter discards the diacritic instead.
+I<#delete> discards the whole accent+letter combination (?).
+B<Note>: There is a separate Unicode property called "Diacritic",
+but it isn't available here yet.
+
+=item * B<Control_0> -- The C0 control characters.
+That is, the usual ones from \x00 to \x1F.
+This option only matters if I<Control> is set to C<keep>.
+
+=item * B<Control_1> -- The C1 control characters.
+That is, the "upper half" ones from \x80 to \x9F.
+B<Note>: These are graphical characters in the common Windows(r) character
+set known as "CP1252", but not in Unicode or most other sets.
+This option only matters if I<Control> is set to C<keep>.
+
+=item * B<Digit> -- characters 0-9 -- Cf Unicode B<Number>, which is broader.
+
+=item * B<Ligature> characters -- This also includes titlecase and digraph
+characters. B<Note>: Some Unicode ligatures, particular in Greek, may also
+be involved in accent normalization.
+See also L<http://en.wikipedia.org/wiki/Typographic_ligature>
+B<(not yet supported)>
+
+=item * B<Fullwidth> --
+See L<http://en.wikipedia.org/wiki/Halfwidth_and_fullwidth_forms>
+B<(not yet supported)>
+
+=item * B<Math> -- Unicode includes many variants of the entire Latin
+alphabet, such as script, sans serif, and others.
+These are in the Unicode B<Math> general category.
+B<(not yet supported)>
+
+=item * B<Nbsp> -- The non-breaking space character, U+00A0. This
+defaults to being changed to a regular space.
+
+=item * B<Soft_Hyphen> -- The soft (optional) hyphen characters,
+U+00AD and U+1806. These default to being deleted.
+
+=back
+
+
+=head2 3: Shorten runs of the same character
+
+These options are all (boolean).
+
+=over
+
+=item * B<N_CHAR> Reduce runs of >= N of the same
+word-character in a row, to just N occurrences. This is for things like
+"aaaaaaaarrrrrrrrrgggggggghhhhhh". However, it does not yet cover things
+like "hahahaha".
+
+=item * B<N_SPACE> Reduce runs of >= N white-space characters
+(not necessarily all the same) to just N.
+
+=back
+
+
+=head2 4: Non-word tokens
+
+This step can tweak various kinds of non-word tokens, such as
+numbers, URIs, etc. The options are of type (disp), but the
+only meaningful settings are "keep", "delete", "space", and "unify".
+
+=over
+
+=item * B<T_TIME> tokens, such as "6:24 pm".
+
+=item * B<T_DATE> tokens, such as "2012-08-22" or "2012 BCE".
+Month names and abbreviations are not yet supported.
+
+=item * B<T_FRACTION> (including Unicode fraction characters if they
+were not already normalized).
+
+=item * B<T_NUMBER> tokens, including signed or unsigned integers, reals,
+and exponential notation (however, fractions are dealt with separately).
+This does not include spelled-out numbers such as "five hundred".
+(not yet supported)
+
+=item * B<T_CURRENCY> tokens, consisting of a currency symbol and a number,
+such as $1, $29.95, etc.
+
+=item * B<T_EMOTICON> items
+
+=item * B<T_HASHTAG> items as in Twitter (#ibm)
+
+=item * B<T_USER> items as in Twitter (@john)
+
+=item * B<T_EMAIL> addresses
+
+=item * B<T_URI> items (see also the B<X_URI> unescaping option earlier)
+
+=back
+
+
+=head2 4: Split tokens
+
+The text can be broken into C<words> at each white-space character(s),
+at all individual C<characters>, or C<none> at all. The choice depends on the
+I<TOKENTYPE> option.
+
+Then leading and trailing punctuation are broken off.
+This prevents leaving parentheses, commas, quotes, etc. attached to words.
+However, the script is not smart (at least, yet) about special cases such as:
+
+  $12       ~5.2      #1        +12
+  5'6"      5!        5%
+  U.S.      p.m.
+  ).        ."        +/-
+  (a)       501(c)(3)
+  @user     #topic    ~a        AT&T
+  e'tre     D'Avaux   let's     y'all     and/or
+
+This needs some adjustments re. which punctuation is allowed on which
+end.  Harder problems include plural genitives: "The three I<dogs'> tails."
+and abbreviations versus sentence-ends.
+
+A few special cases are controlled by these ("S_") options, such as
+re-mapping contractions and breaking up hyphenated words (by inserting
+extra spaces).
+
+=over
+
+=item * B<S_CONTRACTION> can be set to "unify> in order to
+expand most English contractions. For example:
+won't, ain't, we'll, we'd, we're, we'll, somebody'd,
+y'all, let's, gonna, cannot.
+Not very useful for non-English text, even like "dell'" or "c'est".
+(see also POS/multitagTokens).
+
+=item * B<S_HYPHENATED> break at hyphens, making the hyphen a separate
+token. (Doesn't deal with soft hyphens or other B<Format> characters.
+
+=item * B<S_GENITIVE> break "'s" to a separate token. This does not actually
+catch all genitives, even in English (and, many "'s" cases in English
+can be either genitives or contractions of "is".
+B<(not yet supported)>
+
+=back
+
+
+=head2 6: Filter out unwanted tokens ('words' mode only)
+
+These options are all (boolean) except for B<F_MINLENGTH> and B<F_MAXLENGTH>.
+For Boolean filter options, the default is off, which means the tokens
+are not discarded.
+
+=over
+
+=item * B<F_MINLENGTH> (int) -- Discard all tokens shorter than this.
+
+=item * B<F_MAXLENGTH> (int) -- Discard all tokens longer than this.
+
+=item * B<F_SPACE> (boolean) -- can be used to delete all white-space items.
+
+=item * Filter by case and special-character pattern
+Each of the following (disjoint) categories
+can be controlled separately (see also I<--ignoreCase>, I<--Letter>, etc.):
+
+=over
+
+=item * B<F_UPPER> (boolean) -- remove words with only capital or caseless letters
+
+=item * B<F_LOWER> (boolean) -- remove words with only lower case or caseless letters
+
+=item * B<F_TITLE> (boolean) -- remove words with only an initial capital or titlecase
+letter, followed by only lower case or caseless letters.
+
+=item * B<F_MIXED> (boolean) -- remove words with at least two capital and/or
+titlecase letters, along with any number of lower case or caseless letters.
+
+=item * B<F_ALNUM> (boolean) -- remove words that contain both digits and
+letters.
+
+=item * B<F_PUNCT> (boolean) -- remove words that contain both punctuation and
+letters. However, hyphens, apostrophes, and periods do no count.
+
+=back
+
+=item * Tokens in any specified B<F_DICT> list. B<F_MINLENGTH> I<4>
+(see above) can serve as a passable substitute for a dictionary of
+function words.
+
+=back
+
+
+=head1 Outline of token types (unfinished)
+
+(see also earlier sections)
+
+(is there a useful type for "nested syntax"? dates, times, formulae, phone numbers,
+music,
+
+    Numeric
+        Int
+            Dec, Oct, Bin, Hex, Roman
+        Real
+            Float, Exp, Frac, pct/pmil
+        Ordinal
+            1st, #1, first
+        Complex
+        Matrix
+        Math forms, roman and frac unicode, circled,....
+        Formula
+            SPecial constants: pi, euler, c, angstrom, micro prefix
+
+    Date/time (under numeric? unit?)
+
+    Unit
+        Currency
+        Dimension, scale
+        32F 100C 273.15K
+
+    Punc
+        Quote
+            Left/right/plain, single/double/angle
+        Dash
+            em/en/fig/soft?
+        Brace
+            left/right/shape/balanced
+        Grammatical
+            period, ellipsis, colon, semi, comma
+        Verbal
+            &, &c
+
+    Identifier
+        URL
+        domain name
+        email (incl. mailto?)
+        hashtag
+        @user
+        Phone
+        PostCode
+        element
+        substance
+
+    Lexeme
+        simplex
+            lower, title, mixed, caps, uncased
+            abbrev
+                single initial?
+            mixed-script
+            construct
+                dimethyltrichloroacetate
+                genome (incl. end indicators)
+        multiplex
+            hyphenated
+            acronym
+            contraction (vs. possessive)
+                gonna, ima, afaik
+            idiom
+                as far as, so as to,
+
+    Dingbat
+        Bullet, arrow
+        emoticon, emoji
+        sepline
+
+    Mixture
+        (>1 of alpha, num, punc)
+
+Oddball cases:
+    4x4 1'2" AT&T and/or
+    60's
+    Ph.D. vs. PhD (treat like soft hyphen?
+    > or | for email quoting
+    Mg2+ H2O
+    gender symbols
+    footnote numbers, daggers, etc.
+    dominos, cards, dice
+    c/o
+    +/-
+    O'Donnell
+
+
+=head1 Methods
+
+=over
+
+=item * B<new>(tokenType)
+
+Instantiate the tokenizer, and set it up for the I<tokenTYpe> to be
+either B<characters> or B<words>.
+
+=item * B<addOptionsToGetoptLongArg(hashRef,prefix)>
+
+Add the options for this package to I<hashRef>, in the form expected by
+Getopt::Long. If I<prefix> is provided, add it to the beginning of each
+option name (to avoid name conflicts). All the options for this package
+are distinct even ignoring case, so callers may ignore or regard case
+for options as desired.
+
+=item * B<setOption>(name,value)
+
+Change the value of the named option.
+Option names are case-sensitive (but see previous method).
+
+B<Note>: Setting the option for a Unicode cover category
+(such as B<Letter> rather than B<Uppercase_Letter>), is merely shorthand for
+setting all its subcategories to that value
+(subcategories can still be reset afterward).
+
+=item * B<getOption>(name)
+
+Return the present value of the named option.
+Option names are case-sensitive.
+
+=item * B<tokenize>(string)
+
+Break I<string> into tokens according to the settings in effect, and return
+a reference to an array of them. B<Note>: This method uses several other
+internal methods; they can be invoked separately is desired, but are not
+documented fully here; the methods are as shown below ($s is a string to
+handle):
+
+    $s = $tkz->expand($s);
+    $s = $tkz->normalize($s);
+    $s = $tkz->shorten($s);
+    $s = $tkz->nonWordTokens($s);
+    @tokens = @{$tkz->splitTokens($s)};
+    @tokens = @{$tkz->filter(\@tokens)};
+
+
+=back
+
+
+=head1 A few examples
+
+Can we expand &#65; to 'A', &#x0000042; to 'B', &lt; to '>'? U+FFFD
+
+But then (I think), (a) is a label. So is [bracket] and {brace}.
+http://bit.ly/840284028#xyz or email me at user@example.com.
+mailto://user@example.com amounts to the same thing.
+And other schemas like https ftp mailto local data doi
+or example.com itself,
+Emoticons like :) and :( and :P are a pain, even at sentence end :).
+
+Contractions it's good to have but we cannot, 'til we're gonna add 'em.
+But we don't get foreign words d'jour; c'est la vie.
+
+CCAGTTGTGTATGTCCACCC-3 8-hydroxydeoxyguanosine 2,3,4-dihydrogen-monoxide
+
+DATETIME
+    12:45pm on June 15, 2012, i.e., 2012-06-15. or 12:24 P.M., not noon.
+    August/September or Summer of 2018. 03/20/2017  20/03/2017
+    What happened in the 20's? aka the '20s or '20's or just 20s. As in, 2012 CE.
+    or the 1910's, 1920's, 1930s, 1940's, and so on.
+
+UNITS
+    120V 240VAC 12VDC 12mm 14msec 55MPH 80KPH 6'3"
+    r=0.151 p<0.01 0.3-mm
+
+NUMERICS
+    It's a 1-horse (one-horse) town--with one horse-- right?
+    25mm is 1", which is smaller than 5'4". MCMLX.
+    12 deg. C is far warmer than 12K, unless that's 1/3 to 1-1/2 of your RAM.
+    -3.145000 == 27.3% of 12,001, or -2.4. 3.14E+28; it costs $12.1M or $.99.
+    1,234,567 and .1 are also numbers. 1.03-2.01 is a range.
+    A 3-fold cord is not easily broken, at density 10ppb
+    95th birthdays are nice.
+    Sixty-one and a hundred fifty
+    cell/mL or about ~20.2
+    1.234 +/- 0.001
+
+PERIOD
+    Ph.D. Pharm.D. U.S.A.
+    Section A.1.12.3
+
+UNDERSCORE
+
+TWIDDLE
+    ~22 ~15lpm ~0.1
+
+PARENTHESES
+    A(1)
+AMPERSAND
+    AT&T is a company, as is B&O, and other companies....
+
+SHARP
+    #hotTopic A#1 #3
+
+AT-SIGN
+    @userids?
+    user@example.com
+
+PERCENT
+    10% 12.2%
+    And unpercent %42 (plus per-mill and per-10mil unicode), like %C8%82?
+
+COLON
+    URLs, but also 3:1 ratios.
+
+PLUS
+    A+ C++ +12.1E+8 Li+2
+
+CURRENCY
+    $12 $12M $12 million $12.40
+    cents, and other currency markers
+
+SLASH
+    and/or c/o M/F I/O m/s/s N/S left/right dorsal/ventral
+
+BACKSLASH
+    And unbackslash \n \r\\\" \x42 \u0043 \U------44?
+
+
+EMBEDDED LETTERS
+    2x4 is a board; 4x4 can also be a car they might drive in M*A*S*H.
+    interleukin-17
+
+OTHER
+    But C++ and C# are programming languages and A-1 is a steak-sauce.
+    He said, "I'm the Dr." "Dr. Who?" Just the Dr., from Gallifrey.
+
+Common hypheated affixes
+    non- pre- post- self- high- low- all- over- under- anti- early- late-
+    alpha- beta- gamma- mono- bi- tri- co- pro- cross- intra- inter-
+    first- second- one- five- single- meta- mid- multi- re- right- left-
+    drug- sub- super- time- space- well- poorly- half- quarter- hyper- hypo-
+
+    -positive -negative -specific -based -induced -triggered -dependent -oriented
+    -shaped -like -associated -related -tolerant -derived -selective -shaped
+    -resistant -sensitive -effective -point -coupled -free -spaced -driven -responsive
+    -threatening -focused
+
+    NN-VBD
+    12-fold 12-level 12-unit
+
+chemical substance components
+    mono di tru tetra penta hexa
+    ethano phenyl amino phosph[oa] gluco acetyl adren butyric binz gluta
+    hydroxy methyl metha carboxyl trypt propion
+    -ase -ergic -azine -idine -ositol -terol -amine -asone -inine -eptin
+    -sonide -inine -oate -osine
+
+conditions and such
+    -taxis -phobia -itis -osis -cemic -etic -emia -pathic
+
+
+=head1 Known Bugs and Limitations
+
+=over
+
+Not all options are finished. For example:
+I<Ligature, Math, Fullwidth, S_GENITIVE,> etc.
+I<T_NUMBER> is disabled for the moment.
+Titlecase characters, etc.
+Some of this can be done in a pre-pass with:
+
+    iconv -f utf8 -t ascii//TRANSLIT
+
+(disp) values upper, lower, and decompose do not restrict themselves
+to just a single category, but affect all if set for any.
+
+Can't distinguish single vs. double quotes while unifying variants.
+
+Can't break words in orthographies that lack spaces (such as many ideographic
+scripts).
+
+Abbreviations, acronyms, and other cases with word-final punctuation
+are a little wonky: "U.S." loses the final ".".
+Acronyms with periods I<and> spaces aren't caught at all.
+Acronyms aren't allowed within Names Entity References.
+
+Too generous about expanding contractions (e.g. "Tom's")
+
+W/ testTokenizer defaults, turns B&O into 9/9&O ... into \.\.\. doesn't
+separate }. Default unifies URIs, emails, and some (?) numerics.  Doesn't do @userid.
+Maybe move Unification out of Tokenizer?
+
+Processing XML/HTML with default options, ends up splitting the SGML delimiters
+apart from their constructs. Use C<dropXMLtags> is necessary first.
+
+=back
+
+
+=head1 Related commands
+
+C<vocab>, C<ngrams>, C<normalizeSpace>, C<SimplifyUnicode>,
+C<volsunga>, C<findNERcandidates>,....
+
+
+=head1 More cases
+
 #     box(es).
 #     Slash? 1/2, 1-1/2, b/c, and/or, he/she, 3/day,...
 #     Abbreviation periods? Genitives?
@@ -28,8 +734,10 @@
 #     Hex numbers
 #     Sentence-leading words pulled into NER too readily.
 #     DNA sequences:   [-ACGT]{10,}
-#
-# To do (see also "Known Bugs and Limitations")
+
+
+=head1 To do (see also "Known Bugs and Limitations")
+
 #     Profile
 #         Can we switch to UCS2 instead of UTF8 for speed?
 #     Takes \d+ to 9999 too early, kills dates and numeric char refs.
@@ -46,18 +754,36 @@
 #     Unicode Word_Break and Sentence_Break properties
 #     Ditch "filtering" options?
 #
-use strict;
-use Getopt::Long;
-use Encode;
-use charnames ':full';
-use Unicode::Normalize;
-use Unicode::Normalize 'decompose';
 
-#use Devel::DProf;
 
-use sjdUtils;
+=head1 History
 
-our $VERSION_DATE = "2015-06-08";
+# 2012-08-22ff: Written by Steven J. DeRose, based on
+#     variations in tuples, vocab, volsunga, etc. Rationalize....
+# 2012-08-29 sjd: Change option values from strings to numbers. Profile a bit.
+#     Fix some regexes.
+# 2012-09-04f sjd: Fix and doc ucc unify values and inheritance. Use in 'vocab'.
+#     Factor out more regexes, and precompile for speed. Rest of currency.
+#     Provide API for doing normalizing but not tokenizing
+# 2012-09-10 sjd: break at = : ... emdash regardless of T_HYPHEN.
+# 2013-08-29: Comment out digit->9 change in normalize(). Improve regexes
+#     for percent, fraction, etc.
+# 2014-04-10: Add temporal words. Improve abbreviation-detection (attach periods).
+#     Change numerics to default to 'keep', not 'unify'.
+# 2015-02-25: Speedup, cleanup. Add contraction lists. In progress.
+# 2015-06-08: Get working again.
+
+
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons
+Attribution-Share Alike 3.0 Unported License. For further information on
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+=cut
+
 
 #package LanguageSpecific;
 # Cf 'vocab' script
@@ -73,8 +799,6 @@ our $eras     = "BC|AD|BCE|CE";
 our $zones    = "EST|EDT|CST|CDT|MST|MDT|PST|PDT|Z";
 
 
-###############################################################################
-###############################################################################
 ###############################################################################
 #
 package Tokenizer;
@@ -905,745 +1629,3 @@ sub filter {
 
 
 1;
-
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-This is a natural-language tokenizer, intended as a front-end to NLP
-software, particularly lexico-statistical calculators.
-It can also be used to normalize text without tokenizing, or
-as a preprocessor for more extensive NLP stacks.
-
-It is particularly focused on handling a few complex issues well, which I
-think especially iomportant when deriving lexicostatistics (less so when
-simply cranking out processed texts):
-
-=over
-
-=item * Character represented in special ways, such as %xx codes used in URIs;
-character references like &quot; or &#65; in HTML and XML, and so on. These are
-very often found in lexical databases, and are often handled incorrectly.
-
-=item * Less-common characters such as ligatures, accents,
-non-Latin digits, fractions, hyphen and dashess, quotes, and spaces, presentation variants,
-angstrom vs. a-with-ring, etc.
-
-Very many of the NLP systems I've examined fail on quite common cases such as
-"hard" spaces, ligatures, curly quotes, and em-dashes.
-That seems to me sloppy as well as parochial.
-
-=item * Many kinds of non-word tokens, such as URIs, Twitter hashtags, userids, and jargon
-(Twitter has gotten more attention, no doubt to to its overall popularity);,
-numbers, dates, times, email addresses, etc.
-
-=item * Contemporary conventions such as emphasis via special puntuations (*word*),
-or via repeating letters (aaaarrrrrggggghhhhhh, hahahaha).
-
-=item * Choice of how to divide edge cases such as contractions and possessives
-(with and without explicit apostrophes), hyphenated words
-(not the same thing as em-dash-separated clauses), etc.
-
-=item * When collecting or measuring vocabulary,
-options to filter out unwanted tokens are very useful.
-For example, the non-word types already mentioned are important for some purposes, but
-not for others. Words already listed in a given dictionary(s) can be discarded. Tokens
-in all lower, all upper, title, camel, or other case patterns; numers;
-tokens containing special characters, long or short tokens, etc. There are many filtering
-options, so you can easily winnow a list down to just what you want.
-
-=back
-
-=head2 Example
-
-  use Tokenizer;
-  my $myTok = new Tokenizer("characters");
-  $myTok->setOption("Uppercase_Letter", "lower");
-  while (my $rec = <>) {
-      my @tokens = @{myTok->tokenize($rec)};
-      for my $token (@tokens) {
-          $counts{$token}++;
-      }
-  }
-
-
-
-=for nobody ###################################################################
-
-=head1 The process
-
-There are several steps to the process of tokenizing, each controlled
-by various options:
-
-    * Expand special character codes
-    * Fix character-set issues
-    * Shorten long repetition sequences
-    * Recognize non-word tokens (numbers, date, URIs, emoticons,...)
-    * Generate the actual tokenized result.
-
-Option names appear in B<BOLD>, and values in I<ITALIC> below.
-The type of value expected is shown in (parentheses): either (boolean), (int),
-or (disp), unless otherwise described.
-
-
-=for nobody ###################################################################
-
-=head2 1: Expand escaped characters
-
-These options all begin with "X_" and all take (boolean) values,
-for whether to expand them to a literal character.
-
-=over
-
-=item * B<X_BACKSLASH> -- A lot of cases are covered.
-
-=item * B<X_URI> -- %-escapes as used in URIs.
-Not to be confused with the B<T_URI> option for tokenizing (see below).
-
-=item * B<X_ENTITY> -- Covers HTML and XML named entities and
-numeric character references (assuming the caller didn't already parse and
-expand them).
-
-=back
-
-
-=for nobody ###################################################################
-
-=head2 2: Normalize the character set
-
-These options are distinguished by being named in Title_Case with underscores
-(following the Perl convention for Unicode character class names.
- See L<http://unicode.org/reports/tr44/tr44-4.html#General_Category_Values>.
-
-This all assumes that the data is already Unicode, so be careful of CP1252.
-
-=over
-
-=item * B<Ascii_Only> (boolean) -- a special case.
-Discards all non-ASCII characters, and turns control characters (such as
-CR, LF, FF, VT, and TAB) to space. If you specify this, you should not specify
-other character set normalization options.
-
-=back
-
-All other character set normalization options are of type (disp):
-
-(disp) values that apply to any character category at all:
-  "keep"      -- Don't change the characters
-  "delete"    -- Delete the characters entirely
-  "space"     -- Replace the characters with a space
-  "unify"     -- Convert all matches to a single character (see below)
-
-(disp) values only for Number and its subtypes:
-  "value"     -- Replace with the value
-
-(disp) values only for Letter and its subtypes:
-  "upper"     -- Force to upper-case
-  "lower"     -- Force to lower-case
-  "strip"     -- Decompose (NFKD) and then strip any diacritics
-  "decompose" -- Decompose (NFKD) into component characters
-
-I<Letter> and its subcategories default to C<keep>; all other
-character categories default to C<unify> (see below for the
-meaning of "unify" for each case).
-
-B<Note>: A character may have multiple decompositions, or may be
-undecomposable. The resulting string will also be in Compatibility decomposition
-(see L<http://unicode.org/reports/tr15/>) and
-Unicode's Canonical Ordering Behavior. Compatibility decomposition combines
-stylistic variations such as font, breaking, cursive, circled, width,
-rotation, superscript, squared, fractions, I<some> ligatures
-(for example ff but not oe), and pairs like angstrong vs. A with ring,
-ohm vs omega, long s vs. s.
-
-C<#unify> changes each character of the given class
-to one particular ASCII character to represent the class (this is useful for finding
-interesting patterns of use):
-
-  Letter                  unifies to "A"
-  Cased_Letter            unifies to "A"
-  Uppercase_Letter        unifies to "A"
-  Lowercase_Letter        unifies to "a"
-  Titlecase_Letter        unifies to "Fi"
-  Modifier_Letter         unifies to "A"
-  Other_Letter            unifies to "A"
-
-  Mark                    unifies to " "
-  Nonspacing_Mark         unifies to " "
-  Spacing_Mark            unifies to " "
-  Enclosing_Mark          unifies to " "
-
-  Number                  unifies to "9"
-  Decimal_Number          unifies to "9"
-  Letter_Number           unifies to "9"
-  Other_Number            unifies to "9"
-
-  Punctuation             unifies to "."
-  Connector_Punctuation   unifies to "_"
-  Dash_Punctuation        unifies to "-"
-  Open_Punctuation        unifies to "("
-  Close_Punctuation       unifies to ")"
-  Initial_Punctuation     unifies to "`"
-  Final_Punctuation       unifies to "'"
-  Other_Punctuation       unifies to "*"
-
-  Symbol                  unifies to "#"
-  Math_Symbol             unifies to "="
-  Currency_Symbol         unifies to "\$"
-  Modifier_Symbol         unifies to "#"
-  Other_Symbol            unifies to "#"
-
-  Separator               unifies to " "
-  Space_Separator         unifies to " "
-  Line_Separator          unifies to " "
-  Paragraph_Separator     unifies to " "
-
-  Other                   unifies to "?"
-  Control                 unifies to "?"
-      (includes > 64 characters. For example, U+00A0.
-  Format                  unifies to "?"
-  Surrogate               unifies to "?"
-  Private_Use             unifies to "?"
-  Unassigned              unifies to "?"
-
-C<unify> can also be used for the Non-word token options (see below); in that
-case, each option has a particular value to which matching I<tokens> unify.
-
-Setting the option for a cover category (such as I<Letter>) is merely shorthand for
-setting all its subcategories to that value. Some or all subcategories can
-still be reset afterward, but any I<earlier> setting for a subcategory
-is discarded when you set its cover category.
-
-To get a list of the category options run C<Tokenizer.pm -list>.
-
-The following character set normalization options can also be used
-(but are not Unicode General Categories):
-
-=over
-
-=item * B<Accent> --
-These are related to Unicode B<Nonspacing_Mark>,
-but that also would include vowel marks, which this doesn't.
-I<#decompose> and I<strip> are important value for this option:
-the format splits a composed letter+diacritic or similar combination
-into its component parts; the latter discards the diacritic instead.
-I<#delete> discards the whole accent+letter combination (?).
-B<Note>: There is a separate Unicode property called "Diacritic",
-but it isn't available here yet.
-
-=item * B<Control_0> -- The C0 control characters.
-That is, the usual ones from \x00 to \x1F.
-This option only matters if I<Control> is set to C<keep>.
-
-=item * B<Control_1> -- The C1 control characters.
-That is, the "upper half" ones from \x80 to \x9F.
-B<Note>: These are graphical characters in the common Windows(r) character
-set known as "CP1252", but not in Unicode or most other sets.
-This option only matters if I<Control> is set to C<keep>.
-
-=item * B<Digit> -- characters 0-9 -- Cf Unicode B<Number>, which is broader.
-
-=item * B<Ligature> characters -- This also includes titlecase and digraph
-characters. B<Note>: Some Unicode ligatures, particular in Greek, may also
-be involved in accent normalization.
-See also L<http://en.wikipedia.org/wiki/Typographic_ligature>
-B<(not yet supported)>
-
-=item * B<Fullwidth> --
-See L<http://en.wikipedia.org/wiki/Halfwidth_and_fullwidth_forms>
-B<(not yet supported)>
-
-=item * B<Math> -- Unicode includes many variants of the entire Latin
-alphabet, such as script, sans serif, and others.
-These are in the Unicode B<Math> general category.
-B<(not yet supported)>
-
-=item * B<Nbsp> -- The non-breaking space character, U+00A0. This
-defaults to being changed to a regular space.
-
-=item * B<Soft_Hyphen> -- The soft (optional) hyphen characters,
-U+00AD and U+1806. These default to being deleted.
-
-=back
-
-
-=for nobody ###################################################################
-
-=head2 3: Shorten runs of the same character
-
-These options are all (boolean).
-
-=over
-
-=item * B<N_CHAR> Reduce runs of >= N of the same
-word-character in a row, to just N occurrences. This is for things like
-"aaaaaaaarrrrrrrrrgggggggghhhhhh". However, it does not yet cover things
-like "hahahaha".
-
-=item * B<N_SPACE> Reduce runs of >= N white-space characters
-(not necessarily all the same) to just N.
-
-=back
-
-
-
-=for nobody ###################################################################
-
-=head2 4: Non-word tokens
-
-This step can tweak various kinds of non-word tokens, such as
-numbers, URIs, etc. The options are of type (disp), but the
-only meaningful settings are "keep", "delete", "space", and "unify".
-
-=over
-
-=item * B<T_TIME> tokens, such as "6:24 pm".
-
-=item * B<T_DATE> tokens, such as "2012-08-22" or "2012 BCE".
-Month names and abbreviations are not yet supported.
-
-=item * B<T_FRACTION> (including Unicode fraction characters if they
-were not already normalized).
-
-=item * B<T_NUMBER> tokens, including signed or unsigned integers, reals,
-and exponential notation (however, fractions are dealt with separately).
-This does not include spelled-out numbers such as "five hundred".
-(not yet supported)
-
-=item * B<T_CURRENCY> tokens, consisting of a currency symbol and a number,
-such as $1, $29.95, etc.
-
-=item * B<T_EMOTICON> items
-
-=item * B<T_HASHTAG> items as in Twitter (#ibm)
-
-=item * B<T_USER> items as in Twitter (@john)
-
-=item * B<T_EMAIL> addresses
-
-=item * B<T_URI> items (see also the B<X_URI> unescaping option earlier)
-
-=back
-
-
-=for nobody ###################################################################
-
-=head2 4: Split tokens
-
-The text can be broken into C<words> at each white-space character(s),
-at all individual C<characters>, or C<none> at all. The choice depends on the
-I<TOKENTYPE> option.
-
-Then leading and trailing punctuation are broken off.
-This prevents leaving parentheses, commas, quotes, etc. attached to words.
-However, the script is not smart (at least, yet) about special cases such as:
-
-  $12       ~5.2      #1        +12
-  5'6"      5!        5%
-  U.S.      p.m.
-  ).        ."        +/-
-  (a)       501(c)(3)
-  @user     #topic    ~a        AT&T
-  e'tre     D'Avaux   let's     y'all     and/or
-
-This needs some adjustments re. which punctuation is allowed on which
-end.  Harder problems include plural genitives: "The three I<dogs'> tails."
-and abbreviations versus sentence-ends.
-
-A few special cases are controlled by these ("S_") options, such as
-re-mapping contractions and breaking up hyphenated words (by inserting
-extra spaces).
-
-=over
-
-=item * B<S_CONTRACTION> can be set to "unify> in order to
-expand most English contractions. For example:
-won't, ain't, we'll, we'd, we're, we'll, somebody'd,
-y'all, let's, gonna, cannot.
-Not very useful for non-English text, even like "dell'" or "c'est".
-(see also POS/multitagTokens).
-
-=item * B<S_HYPHENATED> break at hyphens, making the hyphen a separate
-token. (Doesn't deal with soft hyphens or other B<Format> characters.
-
-=item * B<S_GENITIVE> break "'s" to a separate token. This does not actually
-catch all genitives, even in English (and, many "'s" cases in English
-can be either genitives or contractions of "is".
-B<(not yet supported)>
-
-=back
-
-
-=for nobody ###################################################################
-
-=head2 6: Filter out unwanted tokens ('words' mode only)
-
-These options are all (boolean) except for B<F_MINLENGTH> and B<F_MAXLENGTH>.
-For Boolean filter options, the default is off, which means the tokens
-are not discarded.
-
-=over
-
-=item * B<F_MINLENGTH> (int) -- Discard all tokens shorter than this.
-
-=item * B<F_MAXLENGTH> (int) -- Discard all tokens longer than this.
-
-=item * B<F_SPACE> (boolean) -- can be used to delete all white-space items.
-
-=item * Filter by case and special-character pattern
-Each of the following (disjoint) categories
-can be controlled separately (see also I<--ignoreCase>, I<--Letter>, etc.):
-
-=over
-
-=item * B<F_UPPER> (boolean) -- remove words with only capital or caseless letters
-
-=item * B<F_LOWER> (boolean) -- remove words with only lower case or caseless letters
-
-=item * B<F_TITLE> (boolean) -- remove words with only an initial capital or titlecase
-letter, followed by only lower case or caseless letters.
-
-=item * B<F_MIXED> (boolean) -- remove words with at least two capital and/or
-titlecase letters, along with any number of lower case or caseless letters.
-
-=item * B<F_ALNUM> (boolean) -- remove words that contain both digits and
-letters.
-
-=item * B<F_PUNCT> (boolean) -- remove words that contain both punctuation and
-letters. However, hyphens, apostrophes, and periods do no count.
-
-=back
-
-=item * Tokens in any specified B<F_DICT> list. B<F_MINLENGTH> I<4>
-(see above) can serve as a passable substitute for a dictionary of
-function words.
-
-=back
-
-
-=head1 Outline of token types (unfinished)
-
-(see also earlier sections)
-
-(is there a useful type for "nested syntax"? dates, times, formulae, phone numbers,
-music,
-
-    Numeric
-        Int
-            Dec, Oct, Bin, Hex, Roman
-        Real
-            Float, Exp, Frac, pct/pmil
-        Ordinal
-            1st, #1, first
-        Complex
-        Matrix
-        Math forms, roman and frac unicode, circled,....
-        Formula
-            SPecial constants: pi, euler, c, angstrom, micro prefix
-
-    Date/time (under numeric? unit?)
-
-    Unit
-        Currency
-        Dimension, scale
-        32F 100C 273.15K
-
-    Punc
-        Quote
-            Left/right/plain, single/double/angle
-        Dash
-            em/en/fig/soft?
-        Brace
-            left/right/shape/balanced
-        Grammatical
-            period, ellipsis, colon, semi, comma
-        Verbal
-            &, &c
-
-    Identifier
-        URL
-        domain name
-        email (incl. mailto?)
-        hashtag
-        @user
-        Phone
-        PostCode
-        element
-        substance
-
-    Lexeme
-        simplex
-            lower, title, mixed, caps, uncased
-            abbrev
-                single initial?
-            mixed-script
-            construct
-                dimethyltrichloroacetate
-                genome (incl. end indicators)
-        multiplex
-            hyphenated
-            acronym
-            contraction (vs. possessive)
-                gonna, ima, afaik
-            idiom
-                as far as, so as to,
-
-    Dingbat
-        Bullet, arrow
-        emoticon, emoji
-        sepline
-
-    Mixture
-        (>1 of alpha, num, punc)
-
-Oddball cases:
-    4x4 1'2" AT&T and/or
-    60's
-    Ph.D. vs. PhD (treat like soft hyphen?
-    > or | for email quoting
-    Mg2+ H2O
-    gender symbols
-    footnote numbers, daggers, etc.
-    dominos, cards, dice
-    c/o
-    +/-
-    O'Donnell
-
-
-
-
-=for nobody ###################################################################
-
-=head1 Methods
-
-=over
-
-=item * B<new>(tokenType)
-
-Instantiate the tokenizer, and set it up for the I<tokenTYpe> to be
-either B<characters> or B<words>.
-
-=item * B<addOptionsToGetoptLongArg(hashRef,prefix)>
-
-Add the options for this package to I<hashRef>, in the form expected by
-Getopt::Long. If I<prefix> is provided, add it to the beginning of each
-option name (to avoid name conflicts). All the options for this package
-are distinct even ignoring case, so callers may ignore or regard case
-for options as desired.
-
-=item * B<setOption>(name,value)
-
-Change the value of the named option.
-Option names are case-sensitive (but see previous method).
-
-B<Note>: Setting the option for a Unicode cover category
-(such as B<Letter> rather than B<Uppercase_Letter>), is merely shorthand for
-setting all its subcategories to that value
-(subcategories can still be reset afterward).
-
-=item * B<getOption>(name)
-
-Return the present value of the named option.
-Option names are case-sensitive.
-
-=item * B<tokenize>(string)
-
-Break I<string> into tokens according to the settings in effect, and return
-a reference to an array of them. B<Note>: This method uses several other
-internal methods; they can be invoked separately is desired, but are not
-documented fully here; the methods are as shown below ($s is a string to
-handle):
-
-    $s = $tkz->expand($s);
-    $s = $tkz->normalize($s);
-    $s = $tkz->shorten($s);
-    $s = $tkz->nonWordTokens($s);
-    @tokens = @{$tkz->splitTokens($s)};
-    @tokens = @{$tkz->filter(\@tokens)};
-
-
-=back
-
-
-
-=for nobody ###################################################################
-
-=head1 A few examples
-
-Can we expand &#65; to 'A', &#x0000042; to 'B', &lt; to '>'? U+FFFD
-
-But then (I think), (a) is a label. So is [bracket] and {brace}.
-http://bit.ly/840284028#xyz or email me at user@example.com.
-mailto://user@example.com amounts to the same thing.
-And other schemas like https ftp mailto local data doi
-or example.com itself,
-Emoticons like :) and :( and :P are a pain, even at sentence end :).
-
-Contractions it's good to have but we cannot, 'til we're gonna add 'em.
-But we don't get foreign words d'jour; c'est la vie.
-
-CCAGTTGTGTATGTCCACCC-3 8-hydroxydeoxyguanosine 2,3,4-dihydrogen-monoxide
-
-DATETIME
-    12:45pm on June 15, 2012, i.e., 2012-06-15. or 12:24 P.M., not noon.
-    August/September or Summer of 2018. 03/20/2017  20/03/2017
-    What happened in the 20's? aka the '20s or '20's or just 20s. As in, 2012 CE.
-    or the 1910's, 1920's, 1930s, 1940's, and so on.
-
-UNITS
-    120V 240VAC 12VDC 12mm 14msec 55MPH 80KPH 6'3"
-    r=0.151 p<0.01 0.3-mm
-
-NUMERICS
-    It's a 1-horse (one-horse) town--with one horse-- right?
-    25mm is 1", which is smaller than 5'4". MCMLX.
-    12 deg. C is far warmer than 12K, unless that's 1/3 to 1-1/2 of your RAM.
-    -3.145000 == 27.3% of 12,001, or -2.4. 3.14E+28; it costs $12.1M or $.99.
-    1,234,567 and .1 are also numbers. 1.03-2.01 is a range.
-    A 3-fold cord is not easily broken, at density 10ppb
-    95th birthdays are nice.
-    Sixty-one and a hundred fifty
-    cell/mL or about ~20.2
-    1.234 +/- 0.001
-
-PERIOD
-    Ph.D. Pharm.D. U.S.A.
-    Section A.1.12.3
-
-UNDERSCORE
-
-TWIDDLE
-    ~22 ~15lpm ~0.1
-
-PARENTHESES
-    A(1)
-AMPERSAND
-    AT&T is a company, as is B&O, and other companies....
-
-SHARP
-    #hotTopic A#1 #3
-
-AT-SIGN
-    @userids?
-    user@example.com
-
-PERCENT
-    10% 12.2%
-    And unpercent %42 (plus per-mill and per-10mil unicode), like %C8%82?
-
-COLON
-    URLs, but also 3:1 ratios.
-
-PLUS
-    A+ C++ +12.1E+8 Li+2
-
-CURRENCY
-    $12 $12M $12 million $12.40
-    cents, and other currency markers
-
-SLASH
-    and/or c/o M/F I/O m/s/s N/S left/right dorsal/ventral
-
-BACKSLASH
-    And unbackslash \n \r\\\" \x42 \u0043 \U------44?
-
-
-EMBEDDED LETTERS
-    2x4 is a board; 4x4 can also be a car they might drive in M*A*S*H.
-    interleukin-17
-
-OTHER
-    But C++ and C# are programming languages and A-1 is a steak-sauce.
-    He said, "I'm the Dr." "Dr. Who?" Just the Dr., from Gallifrey.
-
-Common hypheated affixes
-    non- pre- post- self- high- low- all- over- under- anti- early- late-
-    alpha- beta- gamma- mono- bi- tri- co- pro- cross- intra- inter-
-    first- second- one- five- single- meta- mid- multi- re- right- left-
-    drug- sub- super- time- space- well- poorly- half- quarter- hyper- hypo-
-
-    -positive -negative -specific -based -induced -triggered -dependent -oriented
-    -shaped -like -associated -related -tolerant -derived -selective -shaped
-    -resistant -sensitive -effective -point -coupled -free -spaced -driven -responsive
-    -threatening -focused
-
-    NN-VBD
-    12-fold 12-level 12-unit
-
-chemical substance components
-    mono di tru tetra penta hexa
-    ethano phenyl amino phosph[oa] gluco acetyl adren butyric binz gluta
-    hydroxy methyl metha carboxyl trypt propion
-    -ase -ergic -azine -idine -ositol -terol -amine -asone -inine -eptin
-    -sonide -inine -oate -osine
-
-conditions and such
-    -taxis -phobia -itis -osis -cemic -etic -emia -pathic
-
-
-=for nobody ###################################################################
-
-=head1 Known Bugs and Limitations
-
-=over
-
-Not all options are finished. For example:
-I<Ligature, Math, Fullwidth, S_GENITIVE,> etc.
-I<T_NUMBER> is disabled for the moment.
-Titlecase characters, etc.
-Some of this can be done in a pre-pass with:
-
-    iconv -f utf8 -t ascii//TRANSLIT
-
-(disp) values upper, lower, and decompose do not restrict themselves
-to just a single category, but affect all if set for any.
-
-Can't distinguish single vs. double quotes while unifying variants.
-
-Can't break words in orthographies that lack spaces (such as many ideographic
-scripts).
-
-Abbreviations, acronyms, and other cases with word-final punctuation
-are a little wonky: "U.S." loses the final ".".
-Acronyms with periods I<and> spaces aren't caught at all.
-Acronyms aren't allowed within Names Entity References.
-
-Too generous about expanding contractions (e.g. "Tom's")
-
-W/ testTokenizer defaults, turns B&O into 9/9&O ... into \.\.\. doesn't
-separate }. Default unifies URIs, emails, and some (?) numerics.  Doesn't do @userid.
-Maybe move Unification out of Tokenizer?
-
-Processing XML/HTML with default options, ends up splitting the SGML delimiters
-apart from their constructs. Use C<dropXMLtags> is necessary first.
-
-=back
-
-
-
-=for nobody ###################################################################
-
-=head1 Related commands
-
-C<vocab>, C<ngrams>, C<normalizeSpace>, C<SimplifyUnicode>,
-C<volsunga>, C<findNERcandidates>,....
-
-
-
-=for nobody ###################################################################
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
