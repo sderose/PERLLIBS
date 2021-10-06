@@ -190,22 +190,22 @@ the first new sibling node, and the rest become an initial text node
 under the second.
 (not yet supported)
 
-=item * B<forEachNode(node,preCallback,postCallback)>
+=item * B<eachNode(node,preCallback,postCallback)>
 
 Traverse the subtree headed at I<node>,
 calling the callbacks before and after traversing each node's subtree.
 
-=item * B<forEachTextNode(node,preCallback,postCallback)>
+=item * B<eachTextNode(node,preCallback,postCallback)>
 
-Like I<forEachNode>(), but callbacks are I<only> called when at text nodes.
+Like I<eachNode>(), but callbacks are I<only> called when at text nodes.
 
-=item * B<forEachElement(node,preCallback,postCallback)>
+=item * B<eachElement(node,preCallback,postCallback)>
 
-Like I<forEachNode>(), but callbacks are I<only> called when at element nodes.
+Like I<eachNode>(), but callbacks are I<only> called when at element nodes.
 
-=item * B<forEachElementOfType(node,type,preCallback,postCallback)>
+=item * B<eachElementOfType(node,type,preCallback,postCallback)>
 
-Like I<forEachNode>(), but callbacks are I<only> called when at
+Like I<eachNode>(), but callbacks are I<only> called when at
 element nodes whose type name matches I<type> (which may be a regex).
 
 =item * B<collectAllText(node,delimiter)>
@@ -343,6 +343,7 @@ mergeWithFollowingSiblingText().
     2011-08-22 sjd: Improve collectAllXml().
     2012-09-25 sjd: Qualify DOM node-type constants.
     2021-07-20: Partial sync w/ Python version.
+    2021-08-29: rename forEachXXX to eachXXX to sync with Python version.
 
 
 =head1 Ownership
@@ -387,10 +388,10 @@ our @EXPORT = qw(
     groupSiblings
     promoteChildren
 
-    forEachNode
-    forEachTextNode
-    forEachElement
-    forEachElementOfType
+    eachNode
+    eachTextNode
+    eachElement
+    eachElementOfType
 
     collectAllText
     collectAllXml
@@ -757,7 +758,7 @@ sub deleteWhiteSpaceNodes {
 }
 sub removeWhiteSpaceNodes {
     my ($self) = @_;
-    forEachNode($self,\&removeWhiteSpaceNodesCB,undef);
+    eachNode($self,\&removeWhiteSpaceNodesCB,undef);
 }
 sub removeWhiteSpaceNodesCB {
     my ($self) = @_;
@@ -789,7 +790,7 @@ sub untagNodesByTagName {
 #
 sub normalizeAllSpace {
     my ($self) = @_;
-    forEachNode($self,\&normalizeAllSpaceCB,undef);
+    eachNode($self,\&normalizeAllSpaceCB,undef);
 }
 sub normalizeAllSpaceCB {
     my ($self) = @_;
@@ -917,7 +918,7 @@ sub promoteChildren {
 #
 # If a callback returns true, we stop traversing.
 #
-sub forEachNode {
+sub eachNode {
     my ($self,$callbackA,$callbackB,$depth) = @_;
     if (!defined $depth) { $depth = 1; }
     (defined $self) || return(1);
@@ -928,7 +929,7 @@ sub forEachNode {
     if ($self->hasChildNodes()) {
         #print "Recursing for child nodes at level " . ($depth+1) . "\n";
         for my $ch ($self->getChildNodes()) {
-            my $rc = forEachNode($ch,$callbackA,$callbackB,$depth+1);
+            my $rc = eachNode($ch,$callbackA,$callbackB,$depth+1);
             if ($rc) { return(1); }
         }
     }
@@ -936,10 +937,10 @@ sub forEachNode {
         if ($callbackB->($self,$name,$depth)) { return(1); }
     }
     return(0); # succeed
-} # forEachNode
+} # eachNode
 
 
-sub forEachTextNode {
+sub eachTextNode {
     my ($self,$callbackA,$callbackB,$depth) = @_;
     if (!defined $depth) { $depth = 1; }
     (defined $self) || return(1);
@@ -950,7 +951,7 @@ sub forEachTextNode {
     if ($self->hasChildNodes()) {
         #print "Recursing for child nodes at level " . ($depth+1) . "\n";
         for my $ch ($self->getChildNodes()) {
-            my $rc = forEachTextNode($ch,$callbackA,$callbackB,$depth+1);
+            my $rc = eachTextNode($ch,$callbackA,$callbackB,$depth+1);
             if ($rc) { return(1); }
         }
     }
@@ -958,9 +959,9 @@ sub forEachTextNode {
         if ($callbackB->($self,$name,$depth)) { return(1); }
     }
     return(0); # succeed
-} # forEachTextNode
+} # eachTextNode
 
-sub forEachElement {
+sub eachElement {
     my ($self, $callbackA,$callbackB,$depth) = @_;
     if (!defined $depth) { $depth = 1; }
     (defined $self) || return(1);
@@ -971,7 +972,7 @@ sub forEachElement {
     if ($self->hasChildNodes()) {
         #print "Recursing for child nodes at level " . ($depth+1) . "\n";
         for my $ch ($self->getChildNodes()) {
-            my $rc = forEachElement($ch,$callbackA,$callbackB,$depth+1);
+            my $rc = eachElement($ch,$callbackA,$callbackB,$depth+1);
             if ($rc) { return(1); }
         }
     }
@@ -979,9 +980,9 @@ sub forEachElement {
         if ($callbackB->($self,$name,$depth)) { return(1); }
     }
     return(0); # succeed
-} # forEachElement
+} # eachElement
 
-sub forEachElementOfType {
+sub eachElementOfType {
     my ($self,$elementType, $callbackA,$callbackB,$depth) = @_;
     if (!$depth) { $depth = 1; }
     if (!$self)  { warn "No element specified.\n"; return(1); }
@@ -996,7 +997,7 @@ sub forEachElementOfType {
     if ($self->hasChildNodes()) {
         #print "Recursing for child nodes at level " . ($depth+1) . "\n";
         for my $ch ($self->getChildNodes()) {
-            my $rc = forEachElementOfType(
+            my $rc = eachElementOfType(
                 $ch,$elementType,$callbackA,$callbackB,$depth+1);
             if ($rc) { return(1); }
         }
@@ -1006,7 +1007,7 @@ sub forEachElementOfType {
         if ($callbackB->($self,$name,$depth)) { return(1); }
     }
     return(0); # succeed
-} # forEachElementOfType
+} # eachElementOfType
 
 
 ###############################################################################
@@ -1264,7 +1265,7 @@ sub export {
         my $rootGI = $someElement->getName;
         print $fh "<!DOCTYPE $rootGI PUBLIC '' '' []>\n";
     }
-    forEachNode($someElement,\&startCB,\&endCB,0);
+    eachNode($someElement,\&startCB,\&endCB,0);
 }
 
 sub startCB {
