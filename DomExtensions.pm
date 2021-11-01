@@ -40,7 +40,7 @@ For example (using the Child axis, but you can substitute
 Descendant, PrecedingSibling, FollowingSibling, Preceding, Following,
 or Ancestor:
 
-    selectChild(node,n,type,attributeName,attributeValue)
+    selectChild(node, n, type, attributeName, attributeValue)
 
 This will return the I<n>th child of I<node> which:
 is of the given element I<type>,
@@ -73,7 +73,7 @@ such as scanning for all elements of a given type (which I deem very common).
 
 =over
 
-=item * B<getInheritedAttribute(node,name)>
+=item * B<getInheritedAttribute(node, name)>
 
 Return the value of attribute I<name>, from the first node along the
 I<ancestor-or-self> axis of I<node> that specifies it.
@@ -113,18 +113,18 @@ That is, the list of child-numbers for all the ancestors of the node, from
 the root down, separated by '/'. For example, "1/1/5/2/1".
 This is a fine unique name for the node's location in the document.
 
-=item * B<XPointerCompare(x1,x2)>
+=item * B<XPointerCompare(x1, x2)>
 
 Compare two XPointer child-sequences (see I<getXPointer>)
 for relative document order, returning -1, 0, or 1.
 This does not require actually looking at a document, so no document or
 node is passed.
 
-=item * B<nodeCompare(n1,n2)>
+=item * B<nodeCompare(n1, n2)>
 
 Compare two nodes for document order, returning -1, 0, or 1.
 
-=item * B<XPointerInterpret(document,x)>
+=item * B<XPointerInterpret(document, x)>
 
 Interpret the XPointer child sequence in the string
 I<x>, in the context of the given I<document>,
@@ -167,7 +167,7 @@ is appended to I<node>.
 This drops any sub-structure of the current and sibling.
 New. See also the C<diffCorefs> command.
 
-=item * B<groupSiblings(node1,node2,typeForNewParent)>
+=item * B<groupSiblings(node1, node2, typeForNewParent)>
 
 Group all the nodes from I<node1> through I<node2> together, under a
 new node of type I<typeForNewParent>. Fails if the specified nodes are
@@ -190,35 +190,35 @@ the first new sibling node, and the rest become an initial text node
 under the second.
 (not yet supported)
 
-=item * B<eachNode(node,preCallback,postCallback)>
+=item * B<eachNode(node, preCallback, postCallback)>
 
 Traverse the subtree headed at I<node>,
 calling the callbacks before and after traversing each node's subtree.
 
-=item * B<eachTextNode(node,preCallback,postCallback)>
+=item * B<eachTextNode(node, preCallback, postCallback)>
 
 Like I<eachNode>(), but callbacks are I<only> called when at text nodes.
 
-=item * B<eachElement(node,preCallback,postCallback)>
+=item * B<eachElement(node, preCallback, postCallback)>
 
 Like I<eachNode>(), but callbacks are I<only> called when at element nodes.
 
-=item * B<eachElementOfType(node,type,preCallback,postCallback)>
+=item * B<eachElementOfType(node, type, preCallback, postCallback)>
 
 Like I<eachNode>(), but callbacks are I<only> called when at
 element nodes whose type name matches I<type> (which may be a regex).
 
-=item * B<collectAllText(node,delimiter)>
+=item * B<collectAllText(node, delimiter)>
 
 Concatenate together the content of
 all the text nodes in the subtree headed at I<node>,
 putting I<delimiter> in between.
 
-=item * B<collectAllXml2>(node,delimiter,useDtdInformation,inlines)
+=item * B<collectAllXml2>(node, delimiter, useDtdInformation, inlines)
 
 (newer version, in testing)
 
-=item * B<collectAllXml>(node,delimiter,useDtdInformation,inlines)
+=item * B<collectAllXml>(node, delimiter, useDtdInformation, inlines)
 
 Generate the XML representation for the subtree headed at I<node>.
 It knows about elements, attributes, pis, comments, and appropriate escaping.
@@ -410,11 +410,11 @@ my $dtdk = "";
 # element type and/or attribute/value.
 #
 sub selectAncestor {
-    my ($self,$n,$type,$aname,$avalue) = @_;
+    my ($self, $n, $type, $aname, $avalue) = @_;
     if (!defined $type) { $type = ""; }
     if (!defined $n) { $n = 1; }
     while ($self=getParentNode($self)) {
-        if (nodeMatches($self,$type,$aname,$avalue)) {
+        if (nodeMatches($self, $type, $aname, $avalue)) {
             $n--;
             if ($n<=0) { return($self); }
         }
@@ -425,12 +425,12 @@ sub selectAncestor {
 # No selectAncestorOrSelf
 
 sub selectChild {
-    my ($self,$n,$type,$aname,$avalue) = @_;
+    my ($self, $n, $type, $aname, $avalue) = @_;
     if (!defined $type) { $type = ""; }
     if (!defined $n) { $n = 1; }
     $self = $self->getFirstChild();
     while (defined $self) {
-        if (nodeMatches($self,$type,$aname,$avalue)) {
+        if (nodeMatches($self, $type, $aname, $avalue)) {
             $n--;
             if ($n<=0) { return($self); }
         }
@@ -440,19 +440,19 @@ sub selectChild {
 }
 
 sub selectDescendant {
-    my ($self,$n,$type,$aname,$avalue) = @_;
+    my ($self, $n, $type, $aname, $avalue) = @_;
     setN((defined $n) ? $n:1);
-    return(selectDescendantR($self,$n,$type,$aname,$avalue));
+    return(selectDescendantR($self, $n, $type, $aname, $avalue));
 }
 
 sub selectDescendantR { # XXX FIX ???
-    my ($self,$n,$type,$aname,$avalue) = @_;
-    if (nodeMatches($self,$type,$aname,$avalue)) {
+    my ($self, $n, $type, $aname, $avalue) = @_;
+    if (nodeMatches($self, $type, $aname, $avalue)) {
         $n--;
         if ($n<=0) { return($self); }
     }
     for my $ch ($self->getChildNodes()) {
-        my $node = getDescendantByAttributeR($ch,$n,$type,$aname,$avalue);
+        my $node = getDescendantByAttributeR($ch, $n, $type, $aname, $avalue);
         if (defined $node) {
             $n--;
             if ($n<=0) { return($node); }
@@ -464,11 +464,11 @@ sub selectDescendantR { # XXX FIX ???
 # No selectDescendantOrSelf
 
 sub selectPreceding {
-    my ($self,$n,$type,$aname,$avalue) = @_;
+    my ($self, $n, $type, $aname, $avalue) = @_;
     if (!defined $n) { $n = 1; }
     if (!defined $type) { $type = ""; }
     while ($self=getPreceding($self)) {
-        if (nodeMatches($self,$type,$aname,$avalue)) {
+        if (nodeMatches($self, $type, $aname, $avalue)) {
             $n--;
             if ($n<=0) { return($self); }
         }
@@ -488,11 +488,11 @@ sub getPreceding {
 }
 
 sub selectFollowing {
-    my ($self,$n,$type,$aname,$avalue) = @_;
+    my ($self, $n, $type, $aname, $avalue) = @_;
     if (!defined $n) { $n = 1; }
     if (!defined $type) { $type = ""; }
     while ($self=getFollowing($self)) {
-        if (nodeMatches($self,$type,$aname,$avalue)) {
+        if (nodeMatches($self, $type, $aname, $avalue)) {
             $n--;
             if ($n<=0) { return($self); }
         }
@@ -512,11 +512,11 @@ sub getFollowing {
 }
 
 sub selectPrecedingSibling {
-    my ($self,$n,$type,$aname,$avalue) = @_;
+    my ($self, $n, $type, $aname, $avalue) = @_;
     if (!defined $type) { $type = ""; }
     if (!defined $n) { $n = 1; }
     while ($self = $self->getPreviousSibling()) {
-        if (nodeMatches($self,$type,$aname,$avalue)) {
+        if (nodeMatches($self, $type, $aname, $avalue)) {
             $n--;
             if ($n<=0) { return($self); }
         }
@@ -529,11 +529,11 @@ sub getPrecedingSibling {
 }
 
 sub selectFollowingSibling {
-    my ($self,$n,$type,$aname,$avalue) = @_;
+    my ($self, $n, $type, $aname, $avalue) = @_;
     if (!defined $type) { $type = ""; }
     if (!defined $n) { $n = 1; }
     while ($self=getNextSibling($self)) {
-        if (nodeMatches($self,$type,$aname,$avalue)) {
+        if (nodeMatches($self, $type, $aname, $avalue)) {
             $n--;
             if ($n<=0) { return($self); }
         }
@@ -583,7 +583,8 @@ sub getChildIndex {  # First child is [0]!
     my $par = $self->parentNode;
     if (not $par) { return(-1); }
     for (my $i=0; $i<scalar($par->childNodes); $i++) {
-        if $par->childNodes[$i]->isSameNode(self): return(i);
+        my $ch = $par->childNodes->[$i];
+        if ($ch->isSameNode($self)) { return($i); }
     }
     return(0);
 }
@@ -620,10 +621,11 @@ sub getXPointer {
     }
     return($f);
 }
+
 sub XPointerCompare {
-    my ($self,$xp1,$xp2) = @_;
-    my @t1 = split(/\//,$xp1);
-    my @t2 = split(/\//,$xp2);
+    my ($self, $xp1, $xp2) = @_;
+    my @t1 = split(/\//, $xp1);
+    my @t2 = split(/\//, $xp2);
     for (my $i=0; $i<scalar @t1 && $i<scalar @t2; $i++) {
         if ($t1[$i] < $t2[$i]) { return(-1); }
         if ($t1[$i] > $t2[$i]) { return( 1); }
@@ -633,16 +635,15 @@ sub XPointerCompare {
 }
 
 sub nodeCompare {
-    my ($self,$other) = @_;
-    return(XPointerCompare($self,
-               getXPointer($self),getXPointer($other)));
+    my ($self, $other) = @_;
+    return(XPointerCompare($self, getXPointer($self), getXPointer($other)));
 }
 
 sub XPointerInterpret {
     my ($self, $xp) = @_;
     my $document = $self->ownerDocument();
     my $node = $document->getDocumentElement();
-    my @t = split(/\//,$xp);
+    my @t = split(/\//, $xp);
     if ($t[0] !~ m/^\d+$/) {                     # Leading ID
         my $idNode = $document->getNamedNode($t[0]);
         ($idNode) || return(undef);
@@ -704,7 +705,7 @@ sub nodeMatches {
 # Search upward to find an assignment to an attribute -- like xml:lang.
 #
 sub getInheritedAttribute {
-    my ($self,$aname) = @_;
+    my ($self, $aname) = @_;
     do {
         my $avalue = $self->getAttribute($aname);
         if (defined $avalue) { return($avalue); }
@@ -715,23 +716,24 @@ sub getInheritedAttribute {
 
 sub getStartTag {
     my ($self) = @_;
-    $buf = "<%s" % (self->nodeName);
+    my $buf = "<%s" . self->nodeName;
     if (self->getAttribute('id')) {
-        $buf += ' id="%s"' % (self->getAttribute('id'));
+        $buf .= ' id="' . self->getAttribute('id') . '"';
     }
-    foreach a (self->attributes) {
-        if (a == 'id'): next;
-        $buf += ' %s="%s"' % (a, self->getAttribute(a));
-    $buf += ">";
+    foreach my $a (self->attributes) {
+        ($a eq 'id') && next;
+        $buf .= sprintf(' %s="%s"', $a, $self->getAttribute($a));
+    }
+    $buf .= ">";
     return $buf;
 }
 
 sub getEndTag {
     my ($self, $comment) = @_;
     if (undef $comment) { $comment = 1; }
-    $buf = "</%s>" % (self->nodeName);
-    if (comment and self->getAttribute('id')) {
-        $buf += '<!-- id="%s" -->' % (self->getAttribute('id'));
+    my $buf = "</%s>" % (self->nodeName);
+    if ($comment and $self->getAttribute('id')) {
+        $buf += '<!-- id="%s" -->' % ($self->getAttribute('id'));
     }
     return $buf;
 }
@@ -758,7 +760,7 @@ sub deleteWhiteSpaceNodes {
 }
 sub removeWhiteSpaceNodes {
     my ($self) = @_;
-    eachNode($self,\&removeWhiteSpaceNodesCB,undef);
+    eachNode($self,\&removeWhiteSpaceNodesCB, undef);
 }
 sub removeWhiteSpaceNodesCB {
     my ($self) = @_;
@@ -772,25 +774,28 @@ sub removeNodesByTagName {
     my ($self, $nodeName) = @_;
     my @nodes = $self->getElementsByTagName($nodeName);
     my $ct = 0;
-    for (my $node in @nodes) {
+    foreach my $node (@nodes) {
         $node->parent->removeChild($node);
         $ct += 1;
+    }
     return $ct;
+}
 
 sub untagNodesByTagName {
     my ($self, $nodeName) = @_;
-    for my $t in $self->getElementsByTagName($nodeName) {
+    foreach my $t ($self->getElementsByTagName($nodeName)) {
         my $tn = $self->getDocument->createTextNode($t->innerText());
         $t->parentNode->replaceChild($t, $tn);
     }
     return;
+}
 
 
 ###############################################################################
 #
 sub normalizeAllSpace {
     my ($self) = @_;
-    eachNode($self,\&normalizeAllSpaceCB,undef);
+    eachNode($self, \&normalizeAllSpaceCB, undef);
 }
 sub normalizeAllSpaceCB {
     my ($self) = @_;
@@ -813,7 +818,7 @@ sub addElementSpaces {
 sub insertPrecedingSibling {
     my ($self, $node) = @_;
     my $par = $self->getParentNode();
-    $par->insertBefore($node,$self);
+    $par->insertBefore($node, $self);
     return($node);
 }
 
@@ -822,7 +827,7 @@ sub insertFollowingSibling {
     my $par = $self->getParentNode();
     my $r = $self->getNextSibling();
     if ($r) {
-        $par->insertBefore($node,$r);
+        $par->insertBefore($node, $r);
     }
     else {
         $par->appendChild($node);
@@ -834,7 +839,7 @@ sub insertParent {
     my ($self, $type) = @_;
     my $new = $self->getOwnerDocument->createElement($type);
     my $par = $self->getParentNode();
-    $par->replaceChild($new,$self);
+    $par->replaceChild($new, $self);
     $new->appendChild($self);
     return($new);
 }
@@ -856,8 +861,7 @@ sub mergeWithFollowingSiblingText {
         return;
     }
 
-    my $curText = collectAllText($cur,"") .
-        " " . collectAllText($sib,"");
+    my $curText = collectAllText($cur,"") . " " . collectAllText($sib,"");
     $curText =~ s/\s\s+/ /g;
 
     while ($cur->hasChildNodes()) {
@@ -880,16 +884,15 @@ sub groupSiblings {
     }
     my $oldParent = $first->getParentNode();
     my $oldParent2 = $last->getParentNode();
-    ($oldParent == $oldParent2) || warn
-        "groupSiblings: first and last are not siblings!\n";
+    ($oldParent == $oldParent2) || warn  "groupSiblings: first and last are not siblings!\n";
     my $newParent = $first->getOwnerDocument()->createElement($newParentType);
-    $oldParent->insertChildBefore($newParent,$first);
+    $oldParent->insertChildBefore($newParent, $first);
 
     my $next;
     for (my $cur = $first; defined $cur; $cur=$next) {
         $next = $cur->getNextSibling();
         my $moving = $oldParent->removeChild($cur);
-        $newParent->insertBefore($moving,undef);
+        $newParent->insertBefore($moving, undef);
     }
 } # groupSiblings
 
@@ -904,7 +907,7 @@ sub promoteChildren {
     for (my $cur = $self->getFirstChild(); defined $cur; $cur=$next) {
         $next = $cur->getNextSibling();
         my $moving = $self->removeChild($cur);
-        $parent->insertBefore($moving,$parent);
+        $parent->insertBefore($moving, $parent);
     }
     $parent->deleteChild($self);
 }
@@ -919,92 +922,89 @@ sub promoteChildren {
 # If a callback returns true, we stop traversing.
 #
 sub eachNode {
-    my ($self,$callbackA,$callbackB,$depth) = @_;
+    my ($self, $callbackA, $callbackB, $depth) = @_;
     if (!defined $depth) { $depth = 1; }
     (defined $self) || return(1);
     my $name = $self->getNodeName();
     if (defined $callbackA) {
-        if ($callbackA->($self,$name,$depth)) { return(1); }
+        if ($callbackA->($self, $name, $depth)) { return(1); }
     }
     if ($self->hasChildNodes()) {
         #print "Recursing for child nodes at level " . ($depth+1) . "\n";
         for my $ch ($self->getChildNodes()) {
-            my $rc = eachNode($ch,$callbackA,$callbackB,$depth+1);
+            my $rc = eachNode($ch, $callbackA, $callbackB, $depth+1);
             if ($rc) { return(1); }
         }
     }
     if (defined $callbackB) {
-        if ($callbackB->($self,$name,$depth)) { return(1); }
+        if ($callbackB->($self, $name, $depth)) { return(1); }
     }
     return(0); # succeed
 } # eachNode
 
 
 sub eachTextNode {
-    my ($self,$callbackA,$callbackB,$depth) = @_;
+    my ($self, $callbackA, $callbackB, $depth) = @_;
     if (!defined $depth) { $depth = 1; }
     (defined $self) || return(1);
     my $name = $self->getNodeName();
     if (defined $callbackA && $name eq "#text") {
-        if ($callbackA->($self,$name,$depth)) { return(1); }
+        if ($callbackA->($self, $name, $depth)) { return(1); }
     }
     if ($self->hasChildNodes()) {
         #print "Recursing for child nodes at level " . ($depth+1) . "\n";
         for my $ch ($self->getChildNodes()) {
-            my $rc = eachTextNode($ch,$callbackA,$callbackB,$depth+1);
+            my $rc = eachTextNode($ch, $callbackA, $callbackB, $depth+1);
             if ($rc) { return(1); }
         }
     }
     if (defined $callbackB && $name eq "#text") {
-        if ($callbackB->($self,$name,$depth)) { return(1); }
+        if ($callbackB->($self, $name, $depth)) { return(1); }
     }
     return(0); # succeed
 } # eachTextNode
 
 sub eachElement {
-    my ($self, $callbackA,$callbackB,$depth) = @_;
+    my ($self, $callbackA, $callbackB, $depth) = @_;
     if (!defined $depth) { $depth = 1; }
     (defined $self) || return(1);
     my $name = $self->getNodeName();
     if (defined $callbackA && $self->getNodeType==1) {
-        if ($callbackA->($self,$name,$depth)) { return(1); }
+        if ($callbackA->($self, $name, $depth)) { return(1); }
     }
     if ($self->hasChildNodes()) {
         #print "Recursing for child nodes at level " . ($depth+1) . "\n";
         for my $ch ($self->getChildNodes()) {
-            my $rc = eachElement($ch,$callbackA,$callbackB,$depth+1);
+            my $rc = eachElement($ch, $callbackA, $callbackB, $depth+1);
             if ($rc) { return(1); }
         }
     }
     if (defined $callbackB && $self->getNodeType==1) {
-        if ($callbackB->($self,$name,$depth)) { return(1); }
+        if ($callbackB->($self, $name, $depth)) { return(1); }
     }
     return(0); # succeed
 } # eachElement
 
 sub eachElementOfType {
-    my ($self,$elementType, $callbackA,$callbackB,$depth) = @_;
+    my ($self, $elementType, $callbackA, $callbackB, $depth) = @_;
     if (!$depth) { $depth = 1; }
     if (!$self)  { warn "No element specified.\n"; return(1); }
     if (!$elementType) {
         warn "Bad element type '$elementType' specified.\n"; return(1);
     }
     my $name = $self->getNodeName();
-    if (defined $callbackA && $self->getNodeType==1 &&
-         $self->getNodeName =~ m/$elementType/) {
-        if ($callbackA->($self,$name,$depth)) { return(1); }
+    if (defined $callbackA && $self->getNodeType==1 && $self->getNodeName =~ m/$elementType/) {
+        if ($callbackA->($self, $name, $depth)) { return(1); }
     }
     if ($self->hasChildNodes()) {
         #print "Recursing for child nodes at level " . ($depth+1) . "\n";
         for my $ch ($self->getChildNodes()) {
-            my $rc = eachElementOfType(
-                $ch,$elementType,$callbackA,$callbackB,$depth+1);
+            my $rc = eachElementOfType($ch, $elementType, $callbackA, $callbackB, $depth+1);
             if ($rc) { return(1); }
         }
     }
-    if (defined $callbackB && $self->getNodeType==1 &&
-         $self->getNodeName =~ m/$elementType/) {
-        if ($callbackB->($self,$name,$depth)) { return(1); }
+    if (defined $callbackB && $self->getNodeType==1 && $self->getNodeName =~ m/$elementType/) {
+        if ($callbackB->($self, $name, $depth)) { return(1); }
     }
     return(0); # succeed
 } # eachElementOfType
@@ -1028,7 +1028,7 @@ sub collectAllText {
     }
     elsif ($self->hasChildNodes()) {
         for my $ch ($self->getChildNodes()) {
-            $textBuf .= collectAllText($ch,$delim,$depth+1);
+            $textBuf .= collectAllText($ch, $delim, $depth+1);
         }
     }
     return($textBuf);
@@ -1040,15 +1040,17 @@ sub collectAllText {
 #
 sub getTextNodesIn {
     my ($node) = @_;
-    textNodes = []
-    if (node.nodeType == Node.TEXT_NODE) {
-        textNodes.append(node);
+    my @textNodes = [];
+    if ($node.nodeType == XML::DOM::TEXT_NODE) {
+        append(@textNodes, $node);
     }
     else {
-        for i in (range(len(node.childNodes))) {
-            textNodes.extend(getTextNodes(node.childNodes[i]));
+        for (my $i=0; $i<scalar($node->childNodes); $i++) {
+            my @ch = @{$node->childNodes};
+            append(@textNodes, getTextNodes($ch[$i]));
+        }
     }
-    return textNodes;
+    return @textNodes;
 }
 
 ###############################################################################
@@ -1059,15 +1061,15 @@ sub getTextNodesIn {
 # NOT FINISHED.
 #
 sub collectAllXml2 {
-    my ($self,$delim,$useDtdKnowledge) = @_;
+    my ($self, $delim, $useDtdKnowledge) = @_;
     my $e = new emitter("STRING");
     warn ("\n********* Starting collectAllXml2 at $self\n");
-    collectAllXml2r($self,$delim,$useDtdKnowledge,$e,1);
+    collectAllXml2r($self, $delim, $useDtdKnowledge, $e, 1);
     return($e->{string});
 }
 
 sub collectAllXml2r {
-    my ($self,$delim,$useDtdKnowledge,$theEmitter,$depth);
+    my ($self, $delim, $useDtdKnowledge, $theEmitter, $depth);
 
     if (!defined $delim) { $delim = " "; }
     if (!defined $depth) { $depth = 1; }
@@ -1087,8 +1089,7 @@ sub collectAllXml2r {
     }
     if ($useDtdKnowledge) {
         if (!$dtdk) {
-            $dtdk = new DtdKnowledge(
-                "$ENV{HOME}/bin/SJD/tupleSets.xsv/HtmlKnowledge.xsv");
+            $dtdk = new DtdKnowledge("$ENV{HOME}/bin/SJD/tupleSets.xsv/HtmlKnowledge.xsv");
         }
         my $con = $dtdk->getContent($name);
         $isEmpty = ($con && $con eq "empty") ? 1:0;
@@ -1096,10 +1097,8 @@ sub collectAllXml2r {
         if ($dtype && $dtype ne "inline") {
             $indent = $dtdk->getPreSpace($name);
             $postIndent = $dtdk->getPostSpace($name);
-            $indent = ($indent > 0) ?
-                (($nl x $indent) . ($iString x $depth)) : "";
-            $postIndent = ($postIndent > 0) ?
-                ($nl x $postIndent) : "";
+            $indent = ($indent > 0) ? (($nl x $indent) . ($iString x $depth)) : "";
+            $postIndent = ($postIndent > 0) ? ($nl x $postIndent) : "";
         }
     }
     else {
@@ -1116,14 +1115,11 @@ sub collectAllXml2r {
     #
     my $ntype = $self->getNodeType();
     if ($ntype eq XML::DOM::ELEMENT_NODE) {                 # 1 ELEMENT
-        my $textBuf = "$indent<$name" .
-            getEscapedAttributeList($self) .
-            ($isEmpty ? "/>" : ">");
+        my $textBuf = "$indent<$name" . getEscapedAttributeList($self) . ($isEmpty ? "/>" : ">");
         $theEmitter->emit($textBuf);
         for my $ch ($self->getChildNodes()) {
             warn ("\n********* Recursing from node of type '$name'\n");
-            collectAllXml2r(
-                $ch,$delim,$useDtdKnowledge,$theEmitter,$depth+1);
+            collectAllXml2r($ch, $delim, $useDtdKnowledge, $theEmitter, $depth+1);
         }
         # If we or the last child ended with a line-break, indent end-tag.
         if ($theEmitter->lastCharEmitted() eq $nl) {
@@ -1141,8 +1137,7 @@ sub collectAllXml2r {
     elsif ($ntype eq XML::DOM::ENTITY_REFERENCE_NODE) { }   # 5
     elsif ($ntype eq XML::DOM::ENTITY_NODE) { }             # 6
     elsif ($ntype eq XML::DOM::PROCESSING_INSTRUCTION_NODE) { # 7 PI
-        $theEmitter->emit("<?" . $self->getNodeName() .
-                          " " . $self->getData() . "?>");
+        $theEmitter->emit("<?" . $self->getNodeName() . " " . $self->getData() . "?>");
     }
     elsif ($ntype eq XML::DOM::COMMENT_NODE) {              # 8 COMMENT
         $theEmitter->emit("$indent<!--" . $self->getData() . "-->");
@@ -1168,7 +1163,7 @@ sub collectAllXml2r {
 # XML will also be hierarchically indented. -color applies.
 #
 sub collectAllXml {
-    my ($self,$delim,$useDtdKnowledge,$depth) = @_;
+    my ($self, $delim, $useDtdKnowledge, $depth) = @_;
     if (!defined $delim) { $delim = " "; }
     if (!defined $depth) { $depth = 1; }
 
@@ -1186,16 +1181,14 @@ sub collectAllXml {
     }
     else {
         if (!$dtdk) {
-            $dtdk = new DtdKnowledge(
-                "$ENV{HOME}/bin/SJD/tupleSets/HtmlKnowledge.xsv");
+            $dtdk = new DtdKnowledge("$ENV{HOME}/bin/SJD/tupleSets/HtmlKnowledge.xsv");
         }
         my $con = $dtdk->getContent($name);
         $isEmpty = ($con && $con eq "empty") ? 1:0;
         my $dtype = $dtdk->getDisplay($name);
         if ($dtype && $dtype ne "inline") {
             $indent = $dtdk->getPreSpace($name);
-            $indent = ($indent > 0) ?
-                (($nl x $indent) . ($iString x $depth)) : "";
+            $indent = ($indent > 0) ? (($nl x $indent) . ($iString x $depth)) : "";
         }
     }
 
@@ -1203,15 +1196,14 @@ sub collectAllXml {
     #
     my $textBuf = "";
     if ($ntype eq XML::DOM::ELEMENT_NODE) {                 # 1 ELEMENT
-        $textBuf .= ($iString x $depth) . "<$name" .
-            getEscapedAttributeList($self);
+        $textBuf .= ($iString x $depth) . "<$name" . getEscapedAttributeList($self);
         if ($isEmpty) {
             $textBuf .= "/>";
         }
         else {
             $textBuf .= ">";
             for my $ch ($self->getChildNodes()) {
-                $textBuf .= collectAllXml($ch,$delim,1,$depth+1);
+                $textBuf .= collectAllXml($ch, $delim, 1, $depth+1);
             }
             if ($textBuf =~ m/$nl$/) {
                 $textBuf .=  ($iString x $depth);
@@ -1265,7 +1257,7 @@ sub export {
         my $rootGI = $someElement->getName;
         print $fh "<!DOCTYPE $rootGI PUBLIC '' '' []>\n";
     }
-    eachNode($someElement,\&startCB,\&endCB,0);
+    eachNode($someElement, \&startCB, \&endCB, 0);
 }
 
 sub startCB {
@@ -1394,7 +1386,7 @@ sub escapeXmlContent {
 }
 sub escapeASCII {
     my ($s) = @_;
-    $s =~ s/(\P{IsASCII})/ { sprintf("&#x%04x;",ord($1)); }/ge;
+    $s =~ s/(\P{IsASCII})/ { sprintf("&#x%04x;", ord($1)); }/ge;
     $s = escapeXmlContent($s);
     return($s);
 }
@@ -1454,7 +1446,7 @@ sub new {
 sub emit {
     my ($self, $text) = @_;
     if (length($text)>0) {
-        $self->{lastChar} = substr($text,length($text)-1);
+        $self->{lastChar} = substr($text, length($text)-1);
     }
     if ($self->{type} eq "STRING") {
         $self->{string} .= $text;
@@ -1511,4 +1503,3 @@ sub find {
     my %index = %$indexRef;
     return($index{$avalue});
 }
-
