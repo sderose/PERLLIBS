@@ -1,35 +1,163 @@
 #!/usr/bin/perl -w
 #
-# SimplifyUnicode
-#
+# SimplifyUnicode.pm: Remove some Unicode complexities.
 # 2010-11-19ff: Written by Steven J. DeRose.
-#     Mostly pulled from domExtensions, via normalizeUnicode.
-# 2010-12-01 sjd: Make into Perl Module. Add uriEscapes. Clean up.
-# 2012-01-19 sjd: Debug. Fix setOption() to sync w/ Python version.
-# 2012-05-22 sjd: Drop entities and uriEscapes in favor of sjdUtils.
-#    Simplify option handling.
-# 2012-08-31 sjd: Add 'compatibility', start changing to use UCD, etc.
-#     Use [\p{Initial_Punctuation}\p{Final_Punctuation}'"`]
-# 2013-09-09: Allow setting options via hash on constructor.
-#
-# To do:
-#     Redo ligatureDomain as ligatureAll or something.
-#     Precompile changes for ligatures, so one fancy change not many.
-#         What about generating ligatures, dashes, quotes, spaces?
-#     Pull in code from Tokenizer.pm.
-#     *soft* hyphens special, emdash to double hyphens
-#     Sync Unicode-name-checking with Python version
-#     Option to fix CP1252 stuff, or at least warn???
-#
-# Integrate into:
-#     findKeyWords, normalizeXML, vocab, tokenizer, etc.
-#
+# 
 use strict;
 use Getopt::Long;
 use Unicode::Normalize;
 use Unicode::Normalize 'decompose';
 
-our $VERSION_DATE = "0.6";
+our %metadata = (
+    'title'        => "SimplifyUnicode.pm",
+    'description'  => "Remove some Unicode complexities (no longer maintained).",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5",
+    'created'      => "2010-11-19ff",
+    'modified'     => "2021-11-11",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
+
+=pod
+
+=head1 Usage
+
+Maps many classes of Unicode characters to more basic ones.
+
+Example:
+  use SimplifyUnicode;
+  my $su = new SimplifyUnicode();
+  $su->setOptions("dashes",1);
+  $myString = $su->simplify($myString);
+
+
+=head1 Methods
+
+=head2 new(name, optionsRef?)
+
+Create a new simplifier. You can set exactly what gets simplified using
+the I<setOption> method described below, or by passing a reference to
+a hash of options to set as I<optionsRef>.
+
+=head2 setOption(name, value)
+
+Use this method to configure just what kinds of characters will be
+normalized:
+
+=over
+
+=item * B<compatibility> Do Unicode compatibility decomposition.
+
+=item * B<accent>
+
+Turns accents and other diacritics to some form:
+decomposed, composed, deleted, strip, space, keep.
+
+=item * B<dash>
+
+Turns em dash, en dash, hyphen, etc. to hyphen.
+
+=item * B<ligatureDomain> Whether I<ligatures> does only the basics, or all.
+
+=item * B<ligature>
+
+Turn ligatures to some form:
+decomposed, composed, deleted, space, keep.
+
+=item * B<math>
+
+Normalize alternate math Latin alphabets to ASCII.
+
+=item * B<number>
+
+Normalize alternate forms of numbers to ASCII.
+
+=item * B<qBack>
+
+Normalizes backquote to apostrophe.
+
+=item * B<qInitial>
+
+Turns many kinds of open quotes to backquote.
+
+=item * B<qFinal>
+
+Turns many kinds of close quotes to apostrophe.
+
+=item * B<quote>
+
+Turns many kinds of quotes to apostrophe.
+
+=item * B<space>
+
+Normalize various whitespace chars to ASCII space.
+
+=back
+
+=head2 string = simplify(string)
+
+Simplifies the Unicode string according to the current configuration options.
+
+
+=head1 Related commands
+
+C<iconv>
+
+C<Tokenizer.pm> -- Has many similar normalization featurs, integrated into
+a fairly generic tokenizer.
+
+Might be nice to have a script that checked the scripts in use, and added
+'<span xml:lang="...">' around block of text in various languages.
+Or at least one that screams when it finds characters in the wrong xml:lang
+context.
+
+
+=head1 Known bugs and limitations
+
+Can't map emdash to double hyphen and/or soft-hyphen to nil.
+
+Doesn't know anything about various parentheses, brackets, etc.
+
+
+=head1 History
+
+  2010-11-19ff: Written by Steven J. DeRose.
+Mostly pulled from domExtensions, via normalizeUnicode.
+  2010-12-01 sjd: Make into Perl Module. Add uriEscapes. Clean up.
+  2012-01-19 sjd: Debug. Fix setOption() to sync w/ Python version.
+  2012-05-22 sjd: Drop entities and uriEscapes in favor of sjdUtils.
+Simplify option handling.
+  2012-08-31 sjd: Add 'compatibility', start changing to use UCD, etc.
+Use [\p{Initial_Punctuation}\p{Final_Punctuation}'"`]
+  2013-09-09: Allow setting options via hash on constructor.
+  2021-11-11: New layout.
+
+=head1 To do
+
+  Redo ligatureDomain as ligatureAll or something.
+  Precompile changes for ligatures, so one fancy change not many.
+  What about generating ligatures, dashes, quotes, spaces?
+  Pull in code from Tokenizer.pm.
+  *soft* hyphens special, emdash to double hyphens
+  Sync Unicode-name-checking with Python version
+  Option to fix CP1252 stuff, or at least warn???
+  Integrate into findKeyWords, normalizeXML, vocab, tokenizer, etc.
+
+
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons
+Attribution-Share Alike 3.0 Unported License. For further information on
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+=cut
+
 
 package SimplifyUnicode;
 
@@ -336,7 +464,6 @@ FB4F	HEBREW LIGATURE ALEF LAMED
     };
 }
 
-
 # Maths are handled differently, because they generally include an entire
 # Latin alphabet (lower and or upper case) for each variant; no use in
 # listing 26 times as much data....
@@ -379,129 +506,6 @@ sub setupMaths {
 }
 
 # End of SimplifyUnicodePackage
-
-
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-Maps many classes of Unicode characters to more basic ones.
-
-Example:
-  use SimplifyUnicode;
-  my $su = new SimplifyUnicode();
-  $su->setOptions("dashes",1);
-  $myString = $su->simplify($myString);
-
-
-
-=head1 Methods
-
-=head2 new(name, optionsRef?)
-
-Create a new simplifier. You can set exactly what gets simplified using
-the I<setOption> method described below, or by passing a reference to
-a hash of options to set as I<optionsRef>.
-
-=head2 setOption(name, value)
-
-Use this method to configure just what kinds of characters will be
-normalized:
-
-=over
-
-=item * B<compatibility> Do Unicode compatibility decomposition.
-
-=item * B<accent>
-
-Turns accents and other diacritics to some form:
-decomposed, composed, deleted, strip, space, keep.
-
-=item * B<dash>
-
-Turns em dash, en dash, hyphen, etc. to hyphen.
-
-=item * B<ligatureDomain> Whether I<ligatures> does only the basics, or all.
-
-=item * B<ligature>
-
-Turn ligatures to some form:
-decomposed, composed, deleted, space, keep.
-
-=item * B<math>
-
-Normalize alternate math Latin alphabets to ASCII.
-
-=item * B<number>
-
-Normalize alternate forms of numbers to ASCII.
-
-=item * B<qBack>
-
-Normalizes backquote to apostrophe.
-
-=item * B<qInitial>
-
-Turns many kinds of open quotes to backquote.
-
-=item * B<qFinal>
-
-Turns many kinds of close quotes to apostrophe.
-
-=item * B<quote>
-
-Turns many kinds of quotes to apostrophe.
-
-=item * B<space>
-
-Normalize various whitespace chars to ASCII space.
-
-=back
-
-
-=head2 string = simplify(string)
-
-Simplifies the Unicode string according to the current configuration options.
-
-
-
-=head1 Related commands
-
-C<iconv>
-
-C<Tokenizer.pm> -- Has many similar normalization featurs, integrated into
-a fairly generic tokenizer.
-
-Might be nice to have a script that checked the scripts in use, and added
-'<span xml:lang="...">' around block of text in various languages.
-Or at least one that screams when it finds characters in the wrong xml:lang
-context.
-
-
-
-=head1 Known bugs and limitations
-
-Can't map emdash to double hyphen and/or soft-hyphen to nil.
-
-Doesn't know anything about various parentheses, brackets, etc.
-
-
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
 
 1;
 

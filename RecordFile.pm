@@ -1,34 +1,7 @@
 #!/usr/bin/perl -w
 #
-# RecordFile: Manage a file that's addressable by records.
-#
+# RecordFile.pm: Manage a file that's addressable by records.
 # Written by Steven J. DeRose, 2012-02-15 (extracted from 'lessCSV').
-# 2012-02-22 sjd: Add getRecordsAsArray(), getRecnumAtOffset().
-#     Make sure to rewind() to fix header when setting 'header' option.
-#     Add 'csvParse' option.
-# 2012-04-26 sjd: Cut over from csvFormat to TabularFormats.
-# 2012-06-07 sjd: Drop everything to do with "header" records (leave to caller).
-#     Drop 'csvParse' option. Drop TabularFormats, just let caller do an
-#     addSpecialReader() call instead.
-# 2012-06-14 sjd: Forward rest of relevant calls to specialReader.
-# 2012-11-16 sjd: Factor out OffsetCache package. Make getRecnumAtOffset() and
-#     getOffsetOfRecord() not fail past cache.
-# 2013-02-14 sjd: Rename spurious 'specialReader' var refs to use 'reader'.
-#     Be consistent about using {reader} for all i/o when set. Drop 'options'.
-#     Sync API closer to TabularFormats::DataSource.
-# 2013-06-17: Ditch specialReader. Rename methods to be like files.
-#     Add pushback(), addText(), seekRecord(), tellRecord().
-# 2014-03-05: Start OpenItem and ReadAny packages (porting from Python).
-#
-# To do:
-#     Add atEOF.
-#     Feature to replace a record in place?
-#     Track byte *and* char offsets? Cf C<body> (integrate)
-#     Is knowing nothing about headers really best?
-#     Support zip files directly
-#         Cf EntityManager.pm, vocab, YMLParser.pm.
-#     Reconcile counting of logical vs. physical records.
-#     Integrate into most TEXTUTILS and CSVUTILS.
 #
 use strict;
 use Fcntl;
@@ -43,8 +16,228 @@ use sjdUtils;
 
 package RecordFile;
 
-our $VERSION_DATE = "1.31";
+our %metadata = (
+    'title'        => "RecordFile.pm",
+    'description'  => "Manage a file that's addressable by records.",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5",
+    'created'      => "2010-11-19ff",
+    'modified'     => "2021-11-11",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
 
+=pod
+
+
+=head1 Usage
+
+use RecordFile;
+
+Manage a file that's accessible by record number not just byte offsets.
+Mainly useful if you're doing random access, not just reading straight through.
+
+Builds a cache of record offsets as it goes, to speed up seeks.
+
+B<Note>: There is support in progress for reading zip, bzip2, and tar files
+directly. The needed cpan modules are, however, only loaded if actually
+needed, so there is no need ot install them otherwise
+(see I<sjdUtils::try_module>() re. optional loading of packages).
+
+
+=head1 Examples
+
+  use RecordFile;
+
+  my $rf = new RecordFile("/tmp/myfile.csv");
+  $rf->seekRecord(239, 0);
+  my $rec = $rf->readRecord();
+  print "Record 239 is:\n$rec";
+  $rf->close();
+
+
+=head1 Methods
+
+=head2 The usual methods like for any file
+
+=over
+
+=item * B<open>(path)
+
+Open a new file for reading (closes any prior one).
+
+=item * B<binmode>(e)
+
+Set the encoding for the (already open) input file to I<e>. Default: utf8.
+
+=item * B<close>()
+
+Close any open input file, and clear internal buffers.
+
+=item * See also I<seekRecord>(), I<tellRecord>(), I<readRecord>(), below.
+=back
+
+=head2 Additional methods
+
+=over
+
+=item * B<new RecordFile>(path, encoding?)
+
+Make a new instance of the I<RecordFile> object, opening the file at
+I<path>. I<encoding> names the character encoding to assume
+(default: C<utf8>).
+
+=item * B<attach>(handle)
+
+Use instead of C<open>() if the input file is already open.
+
+=item * B<addText>(text)
+
+=item * B<pushback>(text)
+
+Any text pushed back, will be read first. It doesn't affect record-counting
+and such (at least, it's intended not to...).
+Not generally recommended.
+
+=item * B<setInterruptCB>(cb)
+
+With this set, potentially long operations
+(such as seeking a specific record number, or EOF),
+call I<cb> often (say, after each record). If I<cb> returns TRUE,
+stop the long operation. The callback might, for example, check to see if the
+user has typed or clicked something to interrupt the operation. This should
+be used if there's a chance you'll be dealing with very long files.
+Functions that call this, are described as "Interruptable" here.
+
+=item * B<seekRecord>(n, whence)
+
+Move to the specified record (cf I<seek>()).
+I<Interruptable>.
+
+=item * B<tellRecord>()
+
+Return the record number of the record just read (not the next one!)
+
+=item * B<gotoLastRecord>()
+
+Shorthand for I<seekRecord(-1, -1).
+Returns the record number of the last record.
+I<Interruptable>.
+This also loads the cache that converts between record numbers and file offsets.
+
+=item * B<readNthRecord(n)>
+
+Shorthand for I<seekRecord(n,0)> plus I<readOneRecord>().
+I<Interruptable>.
+
+=item * B<readOneRecord>()
+
+Read the record we're at and return it, leaving us positioned after it.
+
+=back
+
+=head2 General information methods
+
+=over
+
+=item * B<getPath>()
+
+Return the path to the currently-open file, as a string.
+
+=item * B<getNextRecnum>()
+
+Return the record number of the record about to be read (not the one just read!)
+
+=item * B<getCurrentRecordText>()
+
+Return the raw text of the most recently-read record.
+
+=item * B<getOffsetOfRecord>(n)
+
+Return the actual file offset to record I<n>.
+B<Note>: Only checks the cache, so if you haven't been there yet, it won't
+know (and will return -1).
+If you're not sure, use I<gotoNthRecord>() or I<gotoLastRecord>() first.
+
+=item * B<getRecnumAtOffset>(n)
+
+Return the record number that starts at or contains, file offset I<n>.
+Interruptable. Experimental when going beyond the cache.
+Returns undef if the offset cannot be found, or if interrupted.
+
+=item * B<getRecordsAsArray>(first,last)
+
+Return a reference to an array containing the raw text of records I<first>
+through I<last> (inclusive) of the RecordFile. If the record numbers are
+given in the wrong order, they will be quietly swapped.
+This is mainly to support the C<pipe> and C<copy> commands in C<lessFields>,
+which need to gather content between the current position and another.
+
+=back
+
+
+=head1 Related commands
+
+C<lessTabular> uses (and was the origin of) this.
+
+Also potentially useful for: C<body>, C<dumpx>, C<findExamples.py>.
+
+
+=head1 Known bugs and limitations
+
+Dies on invalid utf8 input (check with C<iconv -f utf8 -t utf> if needed).
+
+
+=head1 History
+
+  Written by Steven J. DeRose, 2012-02-15 (extracted from 'lessCSV').
+  2012-02-22 sjd: Add getRecordsAsArray(), getRecnumAtOffset().
+  Make sure to rewind() to fix header when setting 'header' option.
+  Add 'csvParse' option.
+  2012-04-26 sjd: Cut over from csvFormat to TabularFormats.
+  2012-06-07 sjd: Drop everything to do with "header" records (leave to caller).
+  Drop 'csvParse' option. Drop TabularFormats, just let caller do an
+  addSpecialReader() call instead.
+  2012-06-14 sjd: Forward rest of relevant calls to specialReader.
+  2012-11-16 sjd: Factor out OffsetCache package. Make getRecnumAtOffset() and
+  getOffsetOfRecord() not fail past cache.
+  2013-02-14 sjd: Rename spurious 'specialReader' var refs to use 'reader'.
+  Be consistent about using {reader} for all i/o when set. Drop 'options'.
+  Sync API closer to TabularFormats::DataSource.
+  2013-06-17: Ditch specialReader. Rename methods to be like files.
+  Add pushback(), addText(), seekRecord(), tellRecord().
+  2014-03-05: Start OpenItem and ReadAny packages (porting from Python).
+
+
+=head1 To do
+
+  Add atEOF.
+  Feature to replace a record in place?
+  Track byte *and* char offsets? Cf C<body> (integrate)
+  Is knowing nothing about headers really best?
+  Support zip files directly
+  Cf EntityManager.pm, vocab, YMLParser.pm.
+  Reconcile counting of logical vs. physical records.
+  Integrate into most TEXTUTILS and CSVUTILS.
+
+
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons
+Attribution-Share Alike 3.0 Unported License. For further information on
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+
+=cut
+
+
+###############################################################################
+#
 sub new {
     my ($class, $path, $iencoding) = @_;
     if (!$iencoding) { $iencoding = "utf8"; }
@@ -279,9 +472,6 @@ sub getRecnumAtOffset {
 }
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 # Below are the *only* methods that directly touch the file (move into ReadAny)
 # Only try to load Archive::x modules if they're actually needed, so that we
@@ -392,8 +582,8 @@ sub readline {
 } # readline
 
 
-
-
+###############################################################################
+#
 package OpenItem;
 
 my %typeList = (
@@ -442,7 +632,8 @@ sub close {
 }
 
 
-
+###############################################################################
+#
 package ReadAny;
 
 sub new {
@@ -490,9 +681,6 @@ sub new {
 # open, close, read, readline, binmode, seek, tell
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 # Keep a cache mapping record numbers to the file offsets where they start.
 # At the moment, keeps all records up to the highest one read.
@@ -605,189 +793,5 @@ sub OffsetCache::check {
 }
 
 # End of OffsetCache package
-
-
-
-###############################################################################
-###############################################################################
-###############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-use RecordFile;
-
-Manage a file that's accessible by record number not just byte offsets.
-Mainly useful if you're doing random access, not just reading straight through.
-
-Builds a cache of record offsets as it goes, to speed up seeks.
-
-B<Note>: There is support in progress for reading zip, bzip2, and tar files
-directly. The needed cpan modules are, however, only loaded if actually
-needed, so there is no need ot install them otherwise
-(see I<sjdUtils::try_module>() re. optional loading of packages).
-
-
-
-=head1 Examples
-
-  use RecordFile;
-
-  my $rf = new RecordFile("/tmp/myfile.csv");
-  $rf->seekRecord(239, 0);
-  my $rec = $rf->readRecord();
-  print "Record 239 is:\n$rec";
-  $rf->close();
-
-
-
-=head1 Methods
-
-=head2 The usual methods like for any file
-
-=over
-
-=item * B<open>(path)
-
-Open a new file for reading (closes any prior one).
-
-=item * B<binmode>(e)
-
-Set the encoding for the (already open) input file to I<e>. Default: utf8.
-
-=item * B<close>()
-
-Close any open input file, and clear internal buffers.
-
-=item * See also I<seekRecord>(), I<tellRecord>(), I<readRecord>(), below.
-=back
-
-
-=head2 Additional methods
-
-=over
-
-=item * B<new RecordFile>(path, encoding?)
-
-Make a new instance of the I<RecordFile> object, opening the file at
-I<path>. I<encoding> names the character encoding to assume
-(default: C<utf8>).
-
-=item * B<attach>(handle)
-
-Use instead of C<open>() if the input file is already open.
-
-=item * B<addText>(text)
-
-=item * B<pushback>(text)
-
-Any text pushed back, will be read first. It doesn't affect record-counting
-and such (at least, it's intended not to...).
-Not generally recommended.
-
-=item * B<setInterruptCB>(cb)
-
-With this set, potentially long operations
-(such as seeking a specific record number, or EOF),
-call I<cb> often (say, after each record). If I<cb> returns TRUE,
-stop the long operation. The callback might, for example, check to see if the
-user has typed or clicked something to interrupt the operation. This should
-be used if there's a chance you'll be dealing with very long files.
-Functions that call this, are described as "Interruptable" here.
-
-=item * B<seekRecord>(n, whence)
-
-Move to the specified record (cf I<seek>()).
-I<Interruptable>.
-
-=item * B<tellRecord>()
-
-Return the record number of the record just read (not the next one!)
-
-=item * B<gotoLastRecord>()
-
-Shorthand for I<seekRecord(-1, -1).
-Returns the record number of the last record.
-I<Interruptable>.
-This also loads the cache that converts between record numbers and file offsets.
-
-=item * B<readNthRecord(n)>
-
-Shorthand for I<seekRecord(n,0)> plus I<readOneRecord>().
-I<Interruptable>.
-
-=item * B<readOneRecord>()
-
-Read the record we're at and return it, leaving us positioned after it.
-
-=back
-
-
-=head2 General information methods
-
-=over
-
-=item * B<getPath>()
-
-Return the path to the currently-open file, as a string.
-
-=item * B<getNextRecnum>()
-
-Return the record number of the record about to be read (not the one just read!)
-
-=item * B<getCurrentRecordText>()
-
-Return the raw text of the most recently-read record.
-
-=item * B<getOffsetOfRecord>(n)
-
-Return the actual file offset to record I<n>.
-B<Note>: Only checks the cache, so if you haven't been there yet, it won't
-know (and will return -1).
-If you're not sure, use I<gotoNthRecord>() or I<gotoLastRecord>() first.
-
-=item * B<getRecnumAtOffset>(n)
-
-Return the record number that starts at or contains, file offset I<n>.
-Interruptable. Experimental when going beyond the cache.
-Returns undef if the offset cannot be found, or if interrupted.
-
-=item * B<getRecordsAsArray>(first,last)
-
-Return a reference to an array containing the raw text of records I<first>
-through I<last> (inclusive) of the RecordFile. If the record numbers are
-given in the wrong order, they will be quietly swapped.
-This is mainly to support the C<pipe> and C<copy> commands in C<lessFields>,
-which need to gather content between the current position and another.
-
-=back
-
-
-
-=head1 Related commands
-
-C<lessTabular> uses (and was the origin of) this.
-
-Also potentially useful for: C<body>, C<dumpx>, C<findExamples.py>.
-
-
-
-=head1 Known bugs and limitations
-
-Dies on invalid utf8 input (check with C<iconv -f utf8 -t utf> if needed).
-
-
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
 
 1;

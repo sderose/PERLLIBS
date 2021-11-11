@@ -1,6 +1,7 @@
 #!/usr/bin/perl -w
 #
-# TabularFormats.pm
+# TabularFormats.pm: Support a variety of CSV-ish formats.
+# 2006~02: Written by Steven J. DeRose.
 #
 # The main packages:
 #     TabularFormats;
@@ -13,9 +14,26 @@
 #     DataOptions;
 #
 
+our %metadata = (
+    'title'        => "TabularFormats.pm",
+    'description'  => "Support a variety of CSV-ish formats.",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5",
+    'created'      => "2006~02",
+    'modified'     => "2021-11-11",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
+
+
 =pod
 
 =head1 Usage
+
+*** No longer really maintained. See TabularFormat.py and fsplit.py ***
 
 use TabularFormats;
 
@@ -32,7 +50,6 @@ You can also generate records in any of the formats.
 With this script, fields always have names and an ordering.
 Most methods can specify a field by either name or number
 (numeric names are not recommended).
-
 
 =head2 Formats and variations supported
 
@@ -61,7 +78,6 @@ packed bits, length-prefixed strings, and such) are not supported.
 Special support for date/time fields is not provided.
 
 For more details, see below under L</"Supported formats">.
-
 
 =head2 Example
 
@@ -192,7 +208,6 @@ that file as well.
 
 =back
 
-
 =head2 General Options
 
 This is just a list; the full details are at C<TFormatsupport.pm>.
@@ -282,7 +297,6 @@ data to Manchester, since the name "Class" is special in OWL).
 
 =back
 
-
 =head3 Options applicable only to XML/HTML
 
 =over
@@ -357,7 +371,6 @@ use numeric character references for those 5 characters).
 
 =back
 
-
 =head2 Methods for operating on actual records
 
 The main actions you can take are at the level of records: you can I<read>,
@@ -394,7 +407,6 @@ and I<readRecord>() methods.
 
 =back
 
-
 =head2 Input (non-parsing) methods
 
 =over
@@ -408,7 +420,6 @@ The definition of "record" for each format, is described below
 under L<"Supported formats, with examples">
 
 =back
-
 
 =head2 Input parsing methods
 
@@ -469,7 +480,6 @@ names will be utomatically assigned as fields ar encountered.
 
 =back
 
-
 =head2 SAX-style API
 
 =over
@@ -506,7 +516,6 @@ Parse the input data, and return an XML::DOM instance. The DOM returned
 will correspond to the structure you'd get if you used I<parse_more>.
 
 =back
-
 
 =head2 Output assembly methods
 
@@ -551,7 +560,6 @@ I<setFieldNamesFromArray>(), and/or I<setFieldName>().
 =back
 
 
-
 =head1 Supported formats
 
 The set of supported formats is determined by what implementations exist
@@ -577,7 +585,6 @@ This is the I<Attribute-Relation File Format> form for the C<WEKA> ML tookit.
   Stephen,   Hopkins,    RI
   Andries,   'van Dam',  RI
 
-
 =head2 COLUMNS
 
 Fixed column-oriented layout. To use this, you'll need to call
@@ -589,7 +596,6 @@ I<setFieldPosition>() to define column placements.
   John      Hancock    MA
   Stephen   Hopkins    RI
   Andries   van Dam    RI
-
 
 =head2 CSV
 
@@ -614,7 +620,6 @@ if needed (see I<setOption>()).
   Signer04, Stephen, Hopkins, RI
   Signer05, Andries, "van Dam", RI
 
-
 =head2 JSON
 
 Javascript Object Notation, commonly used for passing
@@ -632,7 +637,6 @@ with simplistic JSON (on par with CSV), such as:
     "Signer04": {"Fname":"Stephen",  "LName":"Hopkins",  "State":"RI" }
     "Signer05": {"Fname":"Andries",  "LName":"van Dam",  "State":"RI" }
   ]}
-
 
 =head2 MANCH
 
@@ -662,7 +666,6 @@ As with XML, JSON, and some others, this represents a
   Individual: Signer05
     Types: Signer
     Facts: Fname Andries, LName "van Dam", State RI
-
 
 =head2 MIME
 
@@ -696,7 +699,6 @@ a blank line (only) before each entire record.
   LName: van
       Dam
   State: RI
-
 
 =head2 PERL
 
@@ -739,7 +741,6 @@ Field names and values are quoted (single left only if they consist only
 of alphanumerics; otherwise double enclosed).
 
 I<SXML> syntax is a variation on SEXP that is not yet supported.
-
 
 =head2 XML
 
@@ -860,7 +861,6 @@ extra minimization conventions, especially for tables.
 
 =back
 
-
 =head2 Which formats have Perl and/or Python libraries?
 
 I<And which handle Unicode?>
@@ -905,6 +905,7 @@ may be added for this, perhaps taking the first or last, or concatenating
 them with some separator, or serializing them somehow.
 
 =back
+
 
 =head1 History
 
@@ -1026,7 +1027,10 @@ Instead just return undef and let caller deal.
 =item 2017-04-19: Split DataSchema and FieldDef to separate file TableSchema.pm,
 and DataSource to separate file DataSource.pm,
 
+=item 2021-11-11: Minor cleanup. Not really maintained any more.
+
 =back
+
 
 =head1 To do
 
@@ -1124,6 +1128,7 @@ and DataSource to separate file DataSource.pm,
 
 =back
 
+
 =head1 Ownership
 
 This work by Steven J. DeRose is licensed under a Creative Commons
@@ -1133,6 +1138,7 @@ this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
 For the most recent version, see L<http://www.derose.net/steve/utilities/>.
 
 =cut
+
 
 ###############################################################################
 # Messaging ("UNIVERSAL" is inherited by everything)
@@ -1173,14 +1179,14 @@ my %saxEvents = (
 my @bt = qw/ARFF COLUMNS CSV JSON MIME MANCH PERL SEXP XSV XML/;
 my $formatNamesExpr = join("|",@bt);
 
+
+###############################################################################
+#
 package DataOptions;
 
 
 ###############################################################################
-###############################################################################
-###############################################################################
 # The main package.
-#
 # Instantiates one of the specific formats, and dispatches calls
 # to it.  The top-level package handles messaging, options, field defs,
 # and some interfaces (like SAX). The others handle format-specific i/o.
@@ -1229,6 +1235,7 @@ sub TabularFormats::reset { # TabularFormats
     $self->{dsch}->reset();
     if ($self->{dprev}) { $self->{dprev}->reset(); }
 }
+
 
 ###############################################################################
 # Facilitate callers supporting our options, by providing a single method
@@ -1537,6 +1544,7 @@ sub TabularFormats::isHandlerName {
     my ($self, $name) = @_;
     return((defined $saxEvents{$name}) ? 1:0);
 }
+
 
 ###############################################################################
 # Parse data from various sources (cf FakeParser.pm, SAX. etc.).
@@ -1897,7 +1905,6 @@ sub TabularFormats::assembleTrailer {
 # End of TabularFormats package
 
 
-
 ###############################################################################
 # "pull" style parsing (not provided by SAX).
 # Call start_file(), start_string(), or start_fh()
@@ -1977,9 +1984,6 @@ sub pull_parser::queueEvent { # pull_parser
 }
 
 
-
-###############################################################################
-###############################################################################
 ###############################################################################
 # This package is instantiated by TabularFormats::parse_start(), whose
 # caller then calls our parse_more() method until done.
@@ -2052,7 +2056,6 @@ sub ExpatNB::queueEvent { # ExpatNB
 }
 
 
-###############################################################################
 ###############################################################################
 # Options
 # The datatypes are drawn from Datatypes.pm, which is based on XSD.
@@ -2256,7 +2259,6 @@ sub DataOptions::getOptionHelps {
     return(\%copy);
 }
 
-###############################################################################
 # Check that the options seem consistent and valid...
 #
 sub DataOptions::readyCheck {
@@ -2275,7 +2277,6 @@ sub DataOptions::readyCheck {
     return(1);
 }
 
-###############################################################################
 # WARNING: Calling this directly to set basicType, will not cause
 # chooseFormat() to be called as needed!
 #
@@ -2392,9 +2393,9 @@ sub DataOptions::toString {
 
 
 ###############################################################################
-###############################################################################
 #
 if (!caller) {
     system "perldoc $0";
 }
+
 1;

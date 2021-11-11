@@ -5,16 +5,91 @@
 # History:
 # 2011-03-23: Split out of 'vocab' by Steven J. DeRose.
 #
-# To do:
-#     Add conversions for G1 set.
-#     Add conversions to full Unicode names
-#     Options to go to numeric entities instead of HTML.
-#     Add detector (utf8 validity, vs. presence of C1).
-#
 use strict;
 use charnames ':full';
 
 package cp1252;
+
+our %metadata = (
+    'title'        => "cp1252.pm",
+    'description'  => "Do decent things with the Windows charset.",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5",
+    'created'      => "2006~02",
+    'modified'     => "2021-11-11",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
+
+
+=pod
+
+=head1 Usage
+
+cp1252.pm
+
+Various funky char-set manipulations. For the moment, only deals
+with the C1 control characters and non-breaking space, d128-160.
+
+Really obsolete; use binmode(":encoding(cp1252)") instead.
+Only still used by C<nmi2turk> and C<text2turk>.
+
+
+=head1 Methods
+
+=over
+
+=item * B<cp1252toEntities(s)>
+
+Convert C1 characters and non-breaking space to HTML entities.
+
+=item * B<cp1252toUnicode(s)>
+
+Convert C1 characters and non-breaking space to literal Unicode characters.
+
+=item * B<cp1252getUnicodeNumber(c)>
+
+=item * B<cp1252getUnicodeName(c)>
+
+=back
+
+
+=head1 Known Bugs/Limitations
+
+
+=head1 Related commands
+
+iconv: A *nix utility for converting character encodings.
+
+nonascii: has nice info on char names.
+
+
+=head1 History
+
+  2011-03-23: Split out of 'vocab' by Steven J. DeRose.
+  2021-11-11: New layout.
+
+=head1 To do
+
+  Add conversions for G1 set.
+  Add conversions to full Unicode names
+  Options to go to numeric entities instead of HTML.
+  Add detector (utf8 validity, vs. presence of C1).
+
+
+=head1 Ownership
+
+This work by Steven J. DeRose is licensed under a Creative Commons 
+Attribution-Share Alike 3.0 Unported License. For further information on
+this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
+
+For the most recent version, see L<http://www.derose.net/steve/utilities/>.
+
+
+=cut
 
 
 ##############################################################################
@@ -138,67 +213,5 @@ sub setupC1toUnicode {
 sub setupUnicodetoEntities {
     die "setupUnicodetoEntities not yet supported.\n";
 }
-
-
-
-##############################################################################
-##############################################################################
-##############################################################################
-#
-
-=pod
-
-=head1 Usage
-
-cp1252.pm
-
-Various funky char-set manipulations. For the moment, only deals
-with the C1 control characters and non-breaking space, d128-160.
-
-Really obsolete; use binmode(":encoding(cp1252)") instead.
-Only still used by C<nmi2turk> and C<text2turk>.
-
-
-=head1 Methods
-
-=over
-
-=item * B<cp1252toEntities(s)>
-
-Convert C1 characters and non-breaking space to HTML entities.
-
-=item * B<cp1252toUnicode(s)>
-
-Convert C1 characters and non-breaking space to literal Unicode characters.
-
-=item * B<cp1252getUnicodeNumber(c)>
-
-=item * B<cp1252getUnicodeName(c)>
-
-=back
-
-
-
-=head1 Known Bugs/Limitations
-
-
-
-=head1 Related commands
-
-iconv: A *nix utility for converting character encodings.
-
-nonascii: has nice info on char names.
-
-
-
-=head1 Ownership
-
-This work by Steven J. DeRose is licensed under a Creative Commons 
-Attribution-Share Alike 3.0 Unported License. For further information on
-this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
-
-For the most recent version, see L<http://www.derose.net/steve/utilities/>.
-
-=cut
 
 1;

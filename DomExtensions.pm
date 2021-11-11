@@ -1,6 +1,6 @@
 #!/usr/bin/perl -w
 #
-# DomExtensions -- useful methods on top of XML::DOM.
+# DomExtensions.pm -- Useful methods on top of XML::DOM.
 # Written 2010-04-01~23 by Steven J. DeRose.
 #
 use strict;
@@ -12,10 +12,23 @@ use Exporter; # Make sub(s) available outside without prefix.
 
 use DtdKnowledge;
 
-our $VERSION_DATE = "2.00";
+our %metadata = (
+    'title'        => "DomExtensions.pm",
+    'description'  => "Useful methods on top of XML::DOM.",
+    'rightsHolder' => "Steven J. DeRose",
+    'creator'      => "http://viaf.org/viaf/50334488",
+    'type'         => "http://purl.org/dc/dcmitype/Software",
+    'language'     => "Perl 5",
+    'created'      => "2010-04-01~23",
+    'modified'     => "2020-11-11",
+    'publisher'    => "http://github.com/sderose",
+    'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
+);
+our $VERSION_DATE = $metadata{'modified'};
 
 
 =pod
+
 
 =head1 Notes
 
