@@ -1137,6 +1137,7 @@ this license, see L<http://creativecommons.org/licenses/by-sa/3.0/>.
 
 For the most recent version, see L<http://www.derose.net/steve/utilities/>.
 
+
 =cut
 
 
@@ -1160,8 +1161,6 @@ use DataSource;
 
 sjdUtils::try_module("Datatypes") || warn
     "Can't access sjd Datatypes module.\n";
-
-our $VERSION_DATE = "3.0";
 
 # SAX (XML parser) events (just the ones we actually generate)
 #
