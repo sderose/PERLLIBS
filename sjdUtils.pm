@@ -1911,6 +1911,8 @@ sub escapeURI {
     return($s);
 }
 
+# See also version in unescapeURI, which can also turn result into numeric char refs.
+#
 sub unescapeURI {
     my ($s, $plusToSpace, $escapeChar) = @_;
     if (!$escapeChar) { $escapeChar='%'; }
