@@ -18,13 +18,13 @@ use Exporter;
 use ColorManager;
 
 our %metadata = (
-    'title'        => "alogging.pm",
+    'title'        => "alogging",
     'rightsHolder' => "Steven J. DeRose",
     'creator'      => "http://viaf.org/viaf/50334488",
     'type'         => "http://purl.org/dc/dcmitype/Software",
     'language'     => "Perl 5",
     'created'      => "2011-03-25",
-    'modified'     => "2020-03-01",
+    'modified'     => "2022-03-11",
     'publisher'    => "http://github.com/sderose",
     'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
 );
@@ -33,12 +33,12 @@ our $VERSION_DATE  = $metadata{'modified'};
 our @ISA = qw( Exporter );
 our @EXPORT = qw(
     setLogVerbose getLogVerbose setLogColors
-    defineMsgType
     MsgType
     vMsg eMsg hMsg Msg whereAmI
     setStat getStat bumpStat
     pLine vPush vPop MsgPush MsgPop vSet vGet MsgSet MsgGet
     );
+    #defineMsgType
 
 binmode(STDERR, ":encoding(utf8)");  # Just in case
 
@@ -46,34 +46,48 @@ binmode(STDERR, ":encoding(utf8)");  # Just in case
 
 =head1 Usage
 
-use alogging;
+    use alogging;
+    setLogColors(1);
+    setLogVerbose($myVerbosityLevel);
+    ...
+    alogging::info("This worked great!");
 
-Some basic utilities for handling error messages.
-In addition to the usual warning and error messages methods, it provides
-definable named message types that can set leading and trailing text to
-insert, colors and spacing, etc. And it knows about indentation levels,
-so you can easily arrange your messages like an outline to reflect your logic.
+A range of utilities for handling error messages. This package provides:
 
-There is also a C<pline()> method for printing nicely-aligned columns
-for labels and values.
+=over
 
-Finally, all the messaging calls can take an extra parameter, for the name
-of a counter to increment (counters can also be modified directly). This is
+=item * Python-like info/warning/error methods
+
+=item * numbered -v levels via vMsg(level, msg), eMsg(level, msg)
+
+=item * heading messages by starting the message with "===="
+
+=item * color support
+
+=item * indentation levels
+
+=item * a C<pline()> method for printing nicely-aligned columns
+for labels and values
+
+=item *  an extra parameter for the name
+of a counter to increment. Counters can also be modified directly. This is
 an easy way to keep stats on what things happen (the counters still get
 incremented even if the trace level prevents a message from displaying).
+
+=back
 
 B<Note>: Unless you call I<setLogColors(1)> and I<setLogVerbose(n)>, you might
 not get the output you want. But if you do, C<ColorManager> provides pretty nice
 color features.
 
-B<Note>: A Python version of this package is also available.
+B<Note>: A quite similar Python version of this package is also available.
 
 
 =head1 Options
 
 (prefix "no" to negate where applicable)
 
-See also I<defineMsgType>, I<setLogColors>, and I<setLogVerbose>.
+See also I<defineMsgType> (now deprecated), I<setLogColors>, and I<setLogVerbose>.
 
 =over
 
@@ -330,8 +344,11 @@ C<hilite> -- applies colors to regex matches.
 =item * 2018-03-27 Split to separate package.
 =item * 2018-09-25: Get rid of remaining sjdUtils dependencies.
 =item * 2020-01-28: Standardize layout, get rid of dependency on sjdUtils.
+=item * 2022-03-11: Sync closer to Python version: Add info/warning/error.
+Recognize "====" at start of message to make header.
 
 =back
+
 
 =head1 Rights
 
@@ -341,6 +358,7 @@ See http://creativecommons.org/licenses/by-sa/3.0/ for more information.
 
 For the most recent version, see L<http://www.derose.net/steve/utilities/>
 or L<http://github.com/sderose>.
+
 
 =cut
 
@@ -496,7 +514,6 @@ sub dumpOptions {
 
 
 ###############################################################################
-###############################################################################
 # Messaging calls.
 # Main features: colorizing, verbosity levels, and logging.
 #
@@ -542,6 +559,10 @@ sub defineMsgType {
     }
 
     my ($msgType, $color, $nLevels, $prefix, $infix, $suffix, $escape, $indent) = @_;
+    if (index("hevx", $msgType) < 0) {
+        warn "alogging.pm::defineMsgType() is deprecated.\n";
+    }
+    
     if (!$msgType) { return(0); }
     if (!exists $msgTypes{$msgType}) {
         $msgTypes{$msgType} = { # New type, define with defaults
@@ -604,15 +625,23 @@ sub MsgGet { return($logInfo{msgIndentLevel}); }
 sub vSet { $logInfo{msgIndentLevel} = $_[0]; }
 sub vGet { return($logInfo{msgIndentLevel}); }
 
-sub vMsg { # Verbose warnings
+sub info { # Verbose warnings
     my ($level, $m1, $m2) = @_;
     my $disp = interpretLevel($level);
     return unless($disp);
+    if ($m1 =~ m/^====/) {
+        $m1 =~ s/^====//;
+        $m1 = sprintf("\n%s\n%s", ("=" x 79), $m1);
+    }
     Msg("v", $m1||"", $m2);
     ($disp<0) && die "Warning is fatal.\n";
 }
+sub vMsg {
+    my ($level, $m1, $m2) = @_;
+    info($level, $m1, $m2);
+}
 
-sub eMsg {
+sub warning {
     my ($level, $m1, $m2) = @_;
     $logInfo{"errorCount"}++;
     my $disp = interpretLevel($level);
@@ -621,14 +650,14 @@ sub eMsg {
     Msg("e", $m1, $m2);
     ($disp<0) && die "Error is fatal.\n";
 }
+sub eMsg {
+    my ($level, $m1, $m2) = @_;
+    warning($level, $m1, $m2);
+}
 
 sub hMsg {
     my ($level, $m1, $m2) = @_;
-    my $disp = interpretLevel($level);
-    return unless($disp);
-    if (!defined $m1) { $m1 = ""; }
-    Msg("h", $m1, $m2);
-    ($disp<0) && die "Warning is fatal.\n";
+    info($level, "====" . $m1, $m2);
 }
 
 # Look up message type name to get color and nTraceLevels.
@@ -811,7 +840,6 @@ sub reportStats {
 }
 
 
-###############################################################################
 ###############################################################################
 #
 if (!caller) {
