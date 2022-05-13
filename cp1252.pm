@@ -1,8 +1,6 @@
 #!/usr/bin/perl -w
 #
 # cp1252.pm: Do decent things with the Windows charset.
-#
-# History:
 # 2011-03-23: Split out of 'vocab' by Steven J. DeRose.
 #
 use strict;
@@ -72,6 +70,7 @@ nonascii: has nice info on char names.
   2011-03-23: Split out of 'vocab' by Steven J. DeRose.
   2021-11-11: New layout.
 
+
 =head1 To do
 
   Add conversions for G1 set.
@@ -98,7 +97,6 @@ For the most recent version, see L<http://www.derose.net/steve/utilities/>.
 #
 my $c1toEntities = setupC1toEntities();
 my $c1toUnicode  = setupC1toUnicode();
-our $VERSION_DATE      = "2011-03-24";
 
 sub cp1252toEntities {
     my ($s) = @_;
