@@ -107,7 +107,7 @@ A warning will be printed if you try to set an unknown option.
 
 Globally enable/disable use of color.
 Call this with a I<--color> option value (or equivalent)
-from other scripts (mine default to on if environment variable I<USE_COLOR> is
+from other scripts (mine default to on if environment variable I<CLI_COLOR> is
 set and the relevant output is going to a terminal.
 This is accomplished via my C<ColorManager.pm>.
 

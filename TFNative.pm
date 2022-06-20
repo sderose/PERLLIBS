@@ -355,7 +355,7 @@ package main;
 
 use Getopt::Long;
 
-my $color         = ($ENV{USE_COLOR} && -t STDERR) ? 1:0;
+my $color         = ($ENV{CLI_COLOR} && -t STDERR) ? 1:0;
 my $header        = 0;
 my $iencoding     = "";
 my $ilineends     = "U";
