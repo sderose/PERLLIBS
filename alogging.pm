@@ -145,9 +145,7 @@ set by I<vPush>(), I<vPop>, etc. See also I<defineMsgType>().
 
 =head2 Color Names
 
-The color names available are defined in F<bingit/SHELL/colorNames.pod>
-(you should be able to view this via C<perldoc colorNames> or
-C<more bingit/SHELL/colorNames.pod>.
+The color names available are defined in F<Color/colorNames.pod>.
 That supercedes documentation in specific scripts (they I<should> match).
 
 Briefly, color names consist of I<foreground/background/effect>. For example:
