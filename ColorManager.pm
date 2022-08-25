@@ -76,8 +76,6 @@ while "red/blue/bold" specifies bold red on a blue background
 Set up color handling; if I<b> is false, disables color.
 Returns a reference to a hash with entries for the basic foreground colors
 and "off", with the values being the escape-sequences for them.
-Also sets up default handling for messages of types "v", "e", "h", and "x"
-(see I<defineMsgType>()).
 
 =item * B<getColorString>I<(name)>
 
@@ -309,10 +307,6 @@ sub setColors {
     my ($flag) = @_;
     if (!defined $flag) { $flag = 0; }
     $ENABLED = $flag;
-    #warn("ColorManager::setColors: ENABLED set to $ENABLED.\n");
-
-    #if (scalar keys %colorStrings > 0) { return; }
-
     if (!$newColorMethod) {
         fillColorHash(\%colorStrings);
     }

@@ -1128,7 +1128,7 @@ sub tokenize {
     my $tokens = undef;
     if ($self->{options}->{"TVERBOSE"} > 1) {
         $self->{srcData} = $s;
-        alogging::hMsg(0, "Tokenize:    ", $self->{srcData});
+        alogging::vMsg(0, "====Tokenize:    ", $self->{srcData});
         $self->expand();
         alogging::vMsg(0, " Expanded:   ", $self->{srcData});
         $self->normalize();

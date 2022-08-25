@@ -3,9 +3,6 @@
 # alogging: some generally useful Perl crud for logging.
 #     Split from sjdUtils, 2018-03.
 #
-# To do:
-#     Add error/warn/info/fatal to sync w/ Python version.
-#
 package alogging;
 
 use strict;
@@ -38,7 +35,6 @@ our @EXPORT = qw(
     setStat getStat bumpStat
     pLine vPush vPop MsgPush MsgPop vSet vGet MsgSet MsgGet
     );
-    #defineMsgType
 
 binmode(STDERR, ":encoding(utf8)");  # Just in case
 
@@ -87,8 +83,6 @@ B<Note>: A quite similar Python version of this package is also available.
 
 (prefix "no" to negate where applicable)
 
-See also I<defineMsgType> (now deprecated), I<setLogColors>, and I<setLogVerbose>.
-
 =over
 
 =item * B<getLogOption>I<(name)>
@@ -136,7 +130,7 @@ Negative levels passed to I<eWarn> indicate fatal errors.
 =item * I<indentString> (string)
 
 The string used by I<vMsg>() to create indentation according to the level
-set by I<vPush>(), I<vPop>, etc. See also I<defineMsgType>().
+set by I<vPush>(), I<vPop>, etc.
 
 =back
 
@@ -163,8 +157,7 @@ These are ANSI numbers 30-37 for foreground, and 40-47 for background.
 Set up color handling; if I<b> is false, disables color.
 Returns a reference to a hash with entries for the basic foreground colors
 and "off", with the values being the escape-sequences for them.
-Also sets up default handling for messages of types "v", "e", "h", and "x"
-(see I<defineMsgType>()).
+Also sets up default handling for messages of types "v", "e", "h", and "x".
 
 =back
 
@@ -183,10 +176,6 @@ Synonym for I<setLogOption("verbose", level)>.
 =item * B<getLogVerbose>I<()>
 
 Synonym for I<getLogOption("verbose")>.
-
-=item * B<defineMsgType>I<(msgType, colorName, nLevels, prefix, infix, suffix, escape, indent)>
-
-Set the display options for a (possibly new) named message-type.
 
 =over
 
@@ -235,23 +224,15 @@ I<colorizeXmlTags>() and  I<colorizeXmlContent>(). Default: C<blue>.
 
 Issue an error message if the current verbosity-level is high enough
 (that is, it is at least as great as abs(I<rank>)). See I<setLogVerbose>.
-See I<defineMsgType> for the default color (used for I<message1> only),
-number of stack trace levels, and other settings, and for how to change them.
 If I<rank> is negative, the program is terminated.
 
 =item * B<hMsg>I<(rank, message1, message2)> or B<hWarn>
 
-Issues a heading message if the current verbosity-level is high enough
-(greater than abs(I<rank>)). See I<setLogVerbose>.
-The message gets a blank line above it and some "*" in front.
-I<message1> will be in the color for message type C<h> (see I<defineMsgType>),
-but I<message2> will not be colorized.
+Deprecated in favor of vMsg with message starting with "====".
 
 =item * B<vMsg>I<(rank, message1, message2)> or B<vMsg>
 Issue an informational message if the current setting for
 I<verbose> is greater than I<rank>. See I<setLogVerbose>.
-I<message1> will be in the color for message type C<v> (see I<defineMsgType>),
-but I<message2> will not be colorized.
 A newline is added after I<message2>.
 If I<MsgPush> has been called, the message will be indented appropriately.
 
@@ -283,10 +264,9 @@ describe the I<n>th ancestor of the called instead.
 
 =item * B<Msg>I<(typeOrColor, message1, message2)>
 
-If I<typeOrColor> is a defined message type name, issue a message with
-the corresponding settings (see I<defineMsgType>(), above).
-Otherwise, if I<typeOrColor> is a known L<Color Name>, issue a message
+If I<typeOrColor> is a known L<Color Name>, issue a message
 in that color, unconditionally, with no stack trace.
+Message type names are deprecated and obsolete.
 Otherwise (including if I<typeColor> is
 0, "", or undef), issue the message in the default color, with no stack trace.
 
@@ -326,6 +306,13 @@ There is only one message-depth count, not one for each message type.
 This may be a bug or a feature....
 
 API is not perfectly in sync with my corresponding Python package.
+
+
+=head1 To do
+
+    Add error/warn/info/fatal to sync w/ Python version.
+    Lose remainder of defineMsgType etc.
+
 
 =head1 Related commands
 
@@ -453,11 +440,12 @@ my %logOptions = (
 my %msgTypes = ();
 
 
-
 sub setLogVerbose {
     my ($n) = @_;
 
     $logOptions{'verbose'} = $n;
+    $logOptions{'verboseSet'} = 1;
+    #warn "Set verbose to " . $logOptions{'verbose'} . ".\n";
 }
 
 sub getLogVerbose {
@@ -560,7 +548,7 @@ sub defineMsgType {
     if (index("hevx", $msgType) < 0) {
         warn "alogging.pm::defineMsgType() is deprecated.\n";
     }
-    
+
     if (!$msgType) { return(0); }
     if (!exists $msgTypes{$msgType}) {
         $msgTypes{$msgType} = { # New type, define with defaults
@@ -752,9 +740,10 @@ sub interpretLevel {
         logWarn("Bad level '$level' passed to alogging::interpretLevel()\n");
         return(1);
     }
-    if ($level<0) {
+    if ($level < 0) {
         return(-1);
     }
+    #warn "interpretLevel: l $level, vset " . $logOptions{"verboseSet"} . "\n";
     if ($logOptions{"verboseSet"} &&
         getLogOption("verbose") < abs($level)) {
         return(0);

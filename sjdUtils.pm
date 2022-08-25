@@ -54,7 +54,7 @@ B<Note>: A Python version of this package is also available.
 
 (prefix "no" to negate where applicable)
 
-See also I<defineMsgType>, I<setColors>, and I<setVerbose>.
+See also I<setColors>, and I<setVerbose>.
 
 =over
 
@@ -110,7 +110,7 @@ Negative levels passed to I<eWarn> indicate fatal errors.
 =item * I<indentString> (string)
 
 The string used by I<vMsg>() to create indentation according to the level
-set by I<vPush>(), I<vPop>, etc. See also I<defineMsgType>().
+set by I<vPush>(), I<vPop>, etc.
 
 =back
 
@@ -143,8 +143,6 @@ In fact, they just forward to the implementations in C<ColorManager>.
 Set up color handling; if I<b> is false, disables color.
 Returns a reference to a hash with entries for the basic foreground colors
 and "off", with the values being the escape-sequences for them.
-Also sets up default handling for messages of types "v", "e", "h", and "x"
-(see I<defineMsgType>()).
 
 =item * B<getColorString>I<(name)>
 
@@ -194,10 +192,6 @@ Synonym for I<setUtilsOption("verbose", level)>.
 
 Synonym for I<getUtilsOption("verbose")>.
 
-=item * B<defineMsgType>I<(msgType, colorName, nLevels, prefix, infix, suffix, escape, indent)>
-
-Set the display options for a (possibly new) named message-type.
-
 =over
 
 =item * I<msgType> can be a predefined value (v, e, h, or x), or a new one.
@@ -245,23 +239,15 @@ I<colorizeXmlTags>() and  I<colorizeXmlContent>(). Default: C<blue>.
 
 Issue an error message if the current verbosity-level is high enough
 (that is, it is at least as great as abs(I<rank>)). See I<setVerbose>.
-See I<defineMsgType> for the default color (used for I<message1> only),
-number of stack trace levels, and other settings, and for how to change them.
 If I<rank> is negative, the program is terminated.
 
 =item * B<hMsg>I<(rank, message1, message2)> or B<hWarn>
 
-Issues a heading message if the current verbosity-level is high enough
-(greater than abs(I<rank>)). See I<setVerbose>.
-The message gets a blank line above it and some "*" in front.
-I<message1> will be in the color for message type C<h> (see I<defineMsgType>),
-but I<message2> will not be colorized.
+Deprecated in favor of vMsg with message starting with "====".
 
 =item * B<vMsg>I<(rank, message1, message2)> or B<vMsg>
 Issue an informational message if the current setting for
 I<verbose> is greater than I<rank>. See I<setVerbose>.
-I<message1> will be in the color for message type C<v> (see I<defineMsgType>),
-but I<message2> will not be colorized.
 A newline is added after I<message2>.
 If I<MsgPush> has been called, the message will be indented appropriately.
 
@@ -294,7 +280,7 @@ describe the I<n>th ancestor of the called instead.
 =item * B<Msg>I<(typeOrColor, message1, message2)>
 
 If I<typeOrColor> is a defined message type name, issue a message with
-the corresponding settings (see I<defineMsgType>(), above).
+the corresponding settings.
 Otherwise, if I<typeOrColor> is a known L<Color Name>, issue a message
 in that color, unconditionally, with no stack trace.
 Otherwise (including if I<typeColor> is

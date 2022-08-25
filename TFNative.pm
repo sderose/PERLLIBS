@@ -30,7 +30,7 @@ our $VERSION_DATE = $metadata{'modified'};
 
 =item * just support obvious CSV variants
 
-=item * use native cpan Text::CSV library (thus, no support for 
+=item * use native cpan Text::CSV library (thus, no support for
 all those non-CSV tabular variants).
 
 =item * easily pluggable in place of old TF module.
@@ -108,11 +108,10 @@ my %CSVOptionDefs = (
 );
 
 sub TFNative::new {
-    my ($class, $options) = @_;
-    print($options . "\n");
-    my %optionsCopy = %$options;  # Shallow copy
+    my ($class, $optionsRef) = @_;
+    print($optionsRef . "\n");
     my $self = {
-        "CSVOptions" => \%optionsCopy,
+        "CSVOptions" => (),
         "ifh"        => undef,
         "csv"        => Text::CSV->new(\%optionsCopy),
         "fieldNames" => (),
@@ -120,12 +119,28 @@ sub TFNative::new {
         "recnum"     => 0
     };
     bless $self, $class;
+    $self -> initOptions(\%CSVOptionDefs, $optionsRef);
+}
+
+sub TFNative::initOptions {
+    my ($self, $optionsRef) = @_;
+    $self->CSVOptions = ();
+    for my $oname keys(%CSVOptionDefs) {
+        if (defined $optionsRef->{$oname}) {
+            # TODO: typecheck
+            $self->CSVOptions{$oname} = $optionsRef->{$oname};
+        }
+        else {
+            $self->CSVOptions{$oname} = $optionsRef->{$oname}[0];
+        }
+    }
+    return;
 }
 
 sub TFNative::attach {  # 7 calls
     my ($self, $ifh) = @_;
     $self->ifh = $ifh;
-    $self->recnum++;
+    $self->recnum = 0;
 }
 
 sub TFNative::getLastMessage { # 1 call
@@ -229,6 +244,8 @@ sub TFNative::getOptionHelps { # 1 call
 #
 sub TFNative::readAndParseHeader {  # 4 calls
     my ($self) = @_;
+    ($self->recnum) && die sprintf(
+        "readAndParseHeader: not at rec 0, but %d.\n", $self->recnum));
     my $hrec = $self->readHeader();
     my $fieldsRef = $self->csv->parseHeader($hrec);
     return $fieldsRef;
@@ -236,9 +253,11 @@ sub TFNative::readAndParseHeader {  # 4 calls
 
 sub TFNative::readHeader {  # 5 calls
     my ($self) = @_;
-    if (!$self->ifh || $self->recnum>0) {
-        die "Cannot parse header, no file or already read records.\n";
+    ($self->ifh)  || die
+        "Cannot parse header, no file or already read records.\n";
     }
+    ($self->recnum) && die sprintf(
+        "readHeader: not at rec 0, but %d.\n", $self->recnum);
     return $self->ifh->readline();
 }
 
@@ -250,7 +269,6 @@ sub TFNative::parseHeader {  # 6 calls
 sub TFNative::parseHeaderRecord { # 1 call
     my ($self) = @_;
     die "Not supported.\n";  # TODO: Nuke
-
 }
 
 
@@ -411,7 +429,7 @@ GetOptions(%getoptHash) || die "Bad options.\n";
 #########################################################################################
 # Main
 #
-my $file = $ARGV[0] or die "Need to get CSV file on the command line\n";
+my $file = $ARGV[0] or die "Need to specify a CSV file on the command line\n";
 
 my $tfn = new TFNative(\%DefaultCSVOptions);
 
@@ -422,20 +440,21 @@ $tfn->attach($data);
 
 if ($header) {
     $tfn->parseHeader();
+    vMsg(1, "Header: [ " . join($tfn->fieldNames, ", ") . "].\n");
 }
 
 my $recnum = 0;
 while (my $line = <$data>) {
     $recnum++;
     chomp $line;
- 
+
     if ($tfn->{csv}->parse($line)) {
         my @fields = @{$tfn->{fields}};
         printf("%4d: [ %s ]\n", $recnum, join(@fields, ", "));
         $sum += $fields[2];
- 
+
     } else {
         warn "Line could not be parsed: $line\n";
     }
 }
-
+print("Done after $recnum records.\n");
