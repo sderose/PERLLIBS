@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # cp1252.pm: Do decent things with the Windows charset.
 # 2011-03-23: Split out of 'vocab' by Steven J. DeRose.

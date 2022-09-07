@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # StatLog.pm: Keep stats on various events: counts, min, max, etc.
 # 2010-02-25: Written by Steven J. DeRose.

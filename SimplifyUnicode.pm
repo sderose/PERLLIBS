@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # SimplifyUnicode.pm: Remove some Unicode complexities.
 # 2010-11-19ff: Written by Steven J. DeRose.

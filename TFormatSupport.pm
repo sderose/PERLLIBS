@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # TFormatSupport.pm: Support specific file formats for TabularFormats.pm.
 # Original, 2010-03-23 by Steven J. DeRose, as csvFormat.pm

@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # ElementManager: Maintain XML parser state for various other tools.
 # 2013-01-21: Broken out from FakeParser.pm, Steven J. DeRose.

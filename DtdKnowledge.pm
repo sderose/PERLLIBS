@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # DtdKnowledge.pm: Provide varoius info about HTML (or other) element types.
 # 2011-06-02: Written by Steven J. DeRose.

@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # BibleBooks.pm
 # 2012-05-10ff: Written by Steven J. DeRose.

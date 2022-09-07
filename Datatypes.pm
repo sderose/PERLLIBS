@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # Datatypes.pm: Package to help with XSD datatype checking.
 # 2012-04-24: Written by Steven J. DeRose.

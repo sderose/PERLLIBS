@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # XmlOutput.pm: API to help sequentiually write valid XML.
 # Written 2010-12-22 by Steven J. DeRose.

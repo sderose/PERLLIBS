@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # EntityManager.pm
 # 2011-03-11: Written by Steven J. DeRose, based on my ymlParser.pm.

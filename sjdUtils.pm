@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # sjdUtils: some generally useful Perl crud.
 # Started around 2011-03-25 by Steven J. DeRose.

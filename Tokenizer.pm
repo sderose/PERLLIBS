@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # Tokenize.pm: Generic tokenizer
 # 2012-08-22ff: Written by Steven J. DeRose, based on

@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # TabularFormats.pm: Support a variety of CSV-ish formats.
 # 2006~02: Written by Steven J. DeRose.

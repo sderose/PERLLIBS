@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # ArgParse.pm: Perl version of the Python 'argparse' package. 
 # Written 2012 by Steven J. DeRose, based on standard Python package.

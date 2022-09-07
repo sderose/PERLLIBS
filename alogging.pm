@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # alogging: some generally useful Perl crud for logging.
 #     Split from sjdUtils, 2018-03.

@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # XmlTuples: Trivial XML subset for CSV-ish data (akaXSV).
 # 2011-10-13: Written by Steven J. DeRose.

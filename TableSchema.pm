@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # TableSchema.pm (split from older TabularFormats.pm).
 #    (also includes package FieldDef)

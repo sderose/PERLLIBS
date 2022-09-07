@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # DataSource.pm (split from TabulFormats.pm)
 #     Support for TabularFormats input sources.

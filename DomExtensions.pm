@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # DomExtensions.pm -- Useful methods on top of XML::DOM.
 # Written 2010-04-01~23 by Steven J. DeRose.

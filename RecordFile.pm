@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/env perl -w
 #
 # RecordFile.pm: Manage a file that's addressable by records.
 # Written by Steven J. DeRose, 2012-02-15 (extracted from 'lessCSV').
