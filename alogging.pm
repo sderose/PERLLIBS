@@ -16,12 +16,13 @@ use ColorManager;
 
 our %metadata = (
     'title'        => "alogging",
+    'description'  => "some generally useful -v style logging",
     'rightsHolder' => "Steven J. DeRose",
     'creator'      => "http://viaf.org/viaf/50334488",
     'type'         => "http://purl.org/dc/dcmitype/Software",
     'language'     => "Perl 5",
     'created'      => "2011-03-25",
-    'modified'     => "2022-03-11",
+    'modified'     => "2022-11-01",
     'publisher'    => "http://github.com/sderose",
     'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
 );
@@ -31,7 +32,7 @@ our @ISA = qw( Exporter );
 our @EXPORT = qw(
     setLogVerbose getLogVerbose setLogColors
     MsgType
-    vMsg eMsg hMsg Msg whereAmI
+    vMsg eMsg hMsg Msg showMsg whereAmI
     setStat getStat bumpStat
     pLine vPush vPop MsgPush MsgPop vSet vGet MsgSet MsgGet
     );
@@ -331,6 +332,7 @@ C<hilite> -- applies colors to regex matches.
 =item * 2020-01-28: Standardize layout, get rid of dependency on sjdUtils.
 =item * 2022-03-11: Sync closer to Python version: Add info/warning/error.
 Recognize "====" at start of message to make header.
+=item * 2022-11-01: Add background color to default scheme.
 
 =back
 
@@ -386,12 +388,14 @@ sub isNumeric {
     if ($n =~ m/^\s*[-+]?\d+(\.\d+)?(E[-+]?\d+)?\s*$/i) { return(1); }
     return(0);
 }
+
 sub isInteger {
     my ($n) = @_;
     (defined $n) || return(0);
     if ($n =~ m/^\s*[-+]?\d+/) { return(1); }
     return(0);
 }
+
 sub lpad {
     my ($s, $len, $padChar, $quoteChar) = @_;
     if (!defined $s)       { $s = ""; }
@@ -438,7 +442,6 @@ my %logOptions = (
 
 # For defined message-types. Set up by defineMsgType() and defineMsgTypes().
 my %msgTypes = ();
-
 
 sub setLogVerbose {
     my ($n) = @_;
@@ -522,11 +525,11 @@ sub defineMsgTypes {
     }
 
     if ($bgType eq "light") {
-        #             type  color  nLevels prefix   infix suffix escape indent
-        defineMsgType("v", "blue",      0, "",           "",  "",    0,  1);
-        defineMsgType("e", "red",       0, "ERROR: ",    "",  "",    1,  1);
-        defineMsgType("h", "magenta",   0, "\n******* ", "",  "",    0,  1);
-        defineMsgType("x", "blue",      0, "",           "",  "",    0,  1);
+        #             type  color       nLevels prefix   infix suffix escape indent
+        defineMsgType("v", "blue/white",      0, "",           "",  "",    0,  1);
+        defineMsgType("e", "red/white",       0, "ERROR: ",    "",  "",    1,  1);
+        defineMsgType("h", "magenta/white",   0, "\n******* ", "",  "",    0,  1);
+        defineMsgType("x", "blue/white",      0, "",           "",  "",    0,  1);
     }
     else {
         defineMsgType("v", "/blue",   0, "",           "",  "",    0,  1);
@@ -652,22 +655,23 @@ sub MsgType {
     return(Msg(@_));
 }
 sub Msg {
-    my ($msgType, $m1, $m2) = @_;
+    my ($msgTypeOrColor, $m1, $m2) = @_;
     if (!defined $m2) { $m2 = ""; }
     if (!$logInfo{"msgTypesDefined"}) {
         defineMsgTypes();
     }
-    if (!$msgType) {
+
+    if (!$msgTypeOrColor) {
         rawMsg($m1, $m2, "", 0);
         return;
     }
-
-    my $mDef = $msgTypes{$msgType};
-    if (!defined $mDef) {
-        showMsg("?$msgType? $m1$m2\n");
+    if (!defined $msgTypes{$msgTypeOrColor}) {
+        showMsg(ColorManager::colorize($msgTypeOrColor, $m1.$m2));
+        #showMsg("?$msgType? $m1$m2\n");
         return;
     }
 
+    my $mDef = $msgTypes{$msgTypeOrColor};
     if ($mDef->{escape}) {
         $m1 = showInvisibles($m1 || "");
         $m2 = showInvisibles($m2 || "");
@@ -685,13 +689,7 @@ sub Msg {
     }
 
     my $colorName = "";
-    if (defined $mDef->{color}) {
-        $colorName = $mDef->{color};
-    }
-    elsif (ColorManager::getColorString($msgType, 'quiet')!="") {
-        #warn "Found color per se: $msgType.\n";
-        $colorName = $msgType;
-    }
+    $colorName = (defined $mDef->{color}) ? $mDef->{color} : "";
     my $on = getPickedColorString($colorName);
     my $off = ($on) ? ColorManager::getColorString("off") : "";
 
@@ -706,7 +704,8 @@ sub Msg {
 # Display a message to the applicable destination(s).
 #
 sub showMsg {
-    my ($msg) = @_;
+    my ($msg, $colorName) = @_;
+    if ($colorName) { $msg = ColorManager::colorize($colorName, $msg); }
     if (getLogOption("stdout")) { print($msg); }
     else                          { warn($msg); }
     if ($logOptions{"TEEFILE"})  {
