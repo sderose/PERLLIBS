@@ -47,7 +47,10 @@ binmode(STDERR, ":encoding(utf8)");  # Just in case
     setLogColors(1);
     setLogVerbose($myVerbosityLevel);
     ...
-    alogging::info("This worked great!");
+    alogging::info(1, "This worked great!");
+
+This would issue an information message, iff the message level is at least one
+(typically, that means at least one I<-v> option was given on the command line).
 
 A range of utilities for handling error messages. This package provides:
 

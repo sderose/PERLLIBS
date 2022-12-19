@@ -11,6 +11,7 @@ use Unicode::Normalize;
 use Unicode::Normalize 'decompose';
 
 use sjdUtils;
+use alogging;
 
 our %metadata = (
     'title'        => "Tokenize",
@@ -934,8 +935,8 @@ sub new {  # Tokenizer constructor
         regexes     => {},
     };
     bless $self, $class;
-    if (!sjdUtils::getUtilsOption("verboseSet")) {
-        sjdUtils::setVerbose(0);
+    if (!alogging::getLogVerbose()) {
+        alogging::setLogVerbose(0);
     }
     $self->defineOptions();
 

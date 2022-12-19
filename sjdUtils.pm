@@ -22,12 +22,11 @@ our %metadata = (
     'type'         => "http://purl.org/dc/dcmitype/Software",
     'language'     => "Perl 5",
     'created'      => "2011-03-25",
-    'modified'     => "2020-09-06",
+    'modified'     => "2022-12-19",
     'publisher'    => "http://github.com/sderose",
     'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
 );
 our $VERSION_DATE = $metadata{'modified'};
-
 
 =pod
 
@@ -45,7 +44,7 @@ this and make sure Perl can find it via the C<@INC> directory-list
 see L<here|"http://stackoverflow.com/questions/2526804">).
 
 B<Note>: Unless you call I<setColors(1)> and I<setVerbose(n)>, you might
-not get the output you want.
+not get the output you want (see C<alogging.pm> for details).
 
 B<Note>: A Python version of this package is also available.
 
@@ -53,8 +52,6 @@ B<Note>: A Python version of this package is also available.
 =head1 Options
 
 (prefix "no" to negate where applicable)
-
-See also I<setColors>, and I<setVerbose>.
 
 =over
 
@@ -410,6 +407,14 @@ Only breaks at the specified I<breakChar> (default space) unless that's
 not possible (say, 80 non-spaces in a row), in which case it just breaks
 arbitrarily at C<width>.
 
+=item * B<lengthInBytes>I<(s)>
+
+Return the length of the string s measured in bytes (via 'use bytes').
+
+=item * B<lengthInChars>I<(s)>
+
+Return the length of the string s measured in Unicode code points (more or less,
+"characters"). (via 'Encode::_utf8_on()').
 
 =item * B<isUpper>I<(s)>
 
@@ -935,6 +940,7 @@ Drop ulorem option, ulorem(), and xlorem().
 Actually delete code that was moved to C<alogging.pm> some time ago.
 Add a little test driver.
 
+=item 2022-12-19: Add lengthInBytes(), lengthInChars().
 =back
 
 
@@ -988,7 +994,7 @@ our @EXPORT = qw(
 
     indentJson
 
-    wrap isUpper isLower isCapitalized sc tc ssubstr
+    wrap lengthInBytes lengthInChars isUpper isLower isCapitalized sc tc ssubstr
     rpad lpad lpadc cpad trim ltrim rtrim
     toHNumber fromHNumber isNumeric isInteger
 
@@ -1305,6 +1311,19 @@ sub indentJson {
 ###############################################################################
 # Fiddly stuff for strings and numbers.
 #
+sub lengthInBytes {
+    my ($s) = @_;
+    use bytes;
+    return length($s);
+}
+
+sub lengthInChars {
+    my ($s) = @_;
+    use Encode;
+    Encode::_utf8_on($s);
+    return length($s);
+}
+
 sub wrap {
     my ($s, $indent, $width, $breakChar) = @_;
     if (!$width)     { $width = $ENV{COLUMNS} || 80; }
