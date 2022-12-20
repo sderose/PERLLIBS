@@ -32,7 +32,7 @@ our $VERSION_DATE = $metadata{'modified'};
 
 =head1 Usage
 
-use sjdUtils;
+    use sjdUtils;
 
 Provide some very basic useful utilities used by many of my other scripts.
 Mostly for escaping, colorizing, handling error messages, as well as
@@ -170,12 +170,10 @@ or Python; and can display lists and samples of the various colors.
 
 Remove any ANSI terminal color escapes from I<message>.
 
-
 =back
 
 There are various other methods available in C<ColorManager>, which
 are I<not> available directly in C<sjdUtils>.
-
 
 =head2 Colorized and level-filtered messages
 
@@ -188,49 +186,6 @@ Synonym for I<setUtilsOption("verbose", level)>.
 =item * B<getVerbose>I<()>
 
 Synonym for I<getUtilsOption("verbose")>.
-
-=over
-
-=item * I<msgType> can be a predefined value (v, e, h, or x), or a new one.
-See I<Msg>() to issue a message of any specified type. Required.
-
-=item * I<color> is one of the known L<Color Name>s, in which to disply messages of
-the type being defined. Default: "black".
-
-=item * I<nLevels> specifies how many levels of stack trace should be printed
-when this type of message is issued. Default: 0.
-
-=item * I<prefix> is a string to be printed before I<m1>.
-Default: "".
-
-=item * I<infix> is a string to be printed between I<m1> and I<m2>.
-Default: "".
-
-=item * I<suffix> is a string to be printed after I<m2>.
-Default: "".
-
-=item * I<escape> specifies whether the message (not including any I<pre> or I<suf>)
-should be passed through I<showInvisibles>() before display.  Default: 1.
-
-=item * I<indent> specifies whether messages of the type being defined are to be
-indented (to the level specified via I<vPush>(), vPop(), etc.). Default: 1.
-The indent string is inserted at the beginning, and after each newline
-in the prefix, infix, and suffix (if any).
-
-=back
-
-Only arguments that are not I<undef> will be applied (in other cases, the prior
-value (if any) or the default value (if the message type is new) is used.
-
-The predefined I<msgType> options are:
-
-     C<v> (verbose) is C<blue>, indented.
-     C<h> (heading) is C<magenta>, prefix "\n******* ", unindented.
-     C<e> (error) is C<red>, 3 levels of stack trace, prefix "ERROR: ".
-
-I<msgType> C<x> is special. It determines what color is used by
-I<colorizeXmlTags>() and  I<colorizeXmlContent>(). Default: C<blue>.
-
 
 =item * B<eMsg>I<(rank, message1, message2)> or B<eWarn>
 
@@ -333,21 +288,6 @@ I<elementInfo> is a reference to a hash that maps element type names
 to either "block" or "inline", and causes any listed element types to be
 displayed in the indicated fashion.
 
-
-=item * B<colorizeXmlTags>I<(s, defaultColorName, tagMap?)>
-
-Apply the ANSI terminal escape for I<colorName>
-to XML tags (not text content) in I<s>.
-
-I<tagMap> is an optional reference to a hash that maps XML element type names
-to L<Color Name>s. If supplied, tags for the listed element types
-get the corresponding colors ("default" is ok);
-unlisted element types get the I<defaultColorName>.
-
-=item * B<colorizeXmlContent>I<(colorName)>
-
-Apply the ANSI terminal escape for I<colorName>
-to XML text content (not markup) in I<s>.
 
 =item * B<isXmlChar>, B<isXmlSpaceChar>, B<isXmlNameStartChar>, B<isXmlNameChar>
 
@@ -727,7 +667,7 @@ Returns the date portion from I<isoTime>(). Example: C<2011-11-30>.
 If supplied, I<t> should be a value as from Perl's I<time>() function.
 If absent, the present time is used.
 
-=item * B<elapsedTime>I<(start,end?)>
+=item * B<elapsedTime>I<(start, end?)>
 
 Returns the difference between I<start> and I<end>, which should be values
 directly from Perl's I<time()> function
@@ -940,7 +880,9 @@ Drop ulorem option, ulorem(), and xlorem().
 Actually delete code that was moved to C<alogging.pm> some time ago.
 Add a little test driver.
 
-=item 2022-12-19: Add lengthInBytes(), lengthInChars().
+=item 2022-12-19f: Add lengthInBytes(), lengthInChars().
+Move colorizeXmlTags() and colorizeXmlContent() to ColorManager.pm.
+
 =back
 
 
@@ -987,8 +929,7 @@ our @EXPORT = qw(
 
     setUtilsOption getUtilsOption setVerbose getVerbose setColors
 
-    colorizeXmlTags colorizeXmlContent indentXml
-    isXmlChar isXmlSpaceChar isXmlNameStartChar isXmlNameChar
+    indentXml isXmlChar isXmlSpaceChar isXmlNameStartChar isXmlNameChar
     isXmlName isXmlNameToken isXmlNmtoken
     makeXmlName escapeXmlName unescapeXmlName
 
@@ -1143,7 +1084,7 @@ sub indentXml {
     my ($s, $iString, $maxIndent, $breakEnds, $elementInfoHash) = @_;
     if (!defined $iString) { $iString = "    "; }
     $s =~ s|<|\n<|gs;
-    my @lines = split(/\n/,$s);
+    my @lines = split(/\n/, $s);
     my $depth = 0;
     for (my $i=0; $i<scalar(@lines); $i++) {
         if ($lines[$i] =~ m/^<\//) { $depth--; }           # end-tag
@@ -1170,36 +1111,6 @@ sub indentXml {
     }
     return("$s\n");
 } # indentXml
-
-# Can pass a tag-name to color-name hash as 3rd argument, to be fancy.
-#
-sub colorizeXmlTags {
-    my ($s, $defaultColorName,$colorMapRef) = @_;
-    setColors(1);
-    alogging::setLogColors(1);
-    my $on = getPickedColorString($defaultColorName,$msgTypes{"x"}->{Color});
-    my $off = ($on) ? getColorString("off") : "";
-
-    if (!$colorMapRef) {
-        $s =~ s/(<.*?>)/$on$1$off/g;
-    }
-    else {
-        $s =~ s/(<\/?)([-_.:\w\d]+)([^>]*>)/{
-            ((defined $colorMapRef->{$2}) ?
-                getColorString($colorMapRef->{$2}):$on) . $1 . $2 . $3 . $off }
-            /ge;
-    }
-    return($s);
-}
-
-sub colorizeXmlContent {
-    my ($s, $colorName) = @_;
-    setColors(1);
-    my $on = getPickedColorString($colorName,$msgTypes{"x"}->{Color});
-    my $off = ($on) ? getColorString("off") : "";
-    $s =~ s/>(.*?)</>$on$1$off</g;
-    return($s);
-}
 
 
 ###############################################################################
@@ -1249,7 +1160,7 @@ sub escapeXmlName {
     my $rc = "";
     my $len = length($s);
     for (my $i=0; $i<$len; $i++) {
-        my $c = substr($s,$i,1);
+        my $c = substr($s, $i, 1);
         if (($asciiFlag && $c !~ m/\p{isASCII}/) ||
             !isXmlChar($c) ||
             $c eq "-") {
@@ -1262,12 +1173,13 @@ sub escapeXmlName {
     return($rc)
 }
 
+my $unescapeExpr = '-([0-9a-f]{4,4})';
 sub unescapeXMLName {
     return(unescapeXmlName(@_));
 }
 sub unescapeXmlName {
     my ($s) = @_;
-    $s =~ s/-([0-9a-f]{4,4})/{ chr(hex("0x$1")); }/ge;
+    $s =~ s/$unescapeExpr/{ chr(hex("0x$1")); }/ge;
     return($s);
 }
 
@@ -1283,7 +1195,7 @@ sub indentJson {
     my $lastChar = "";
     my $lastPos = length($s)-1;
     for my $i (0..$lastPos) {
-        my $c = substr($s,$i,1);
+        my $c = substr($s, $i, 1);
         my $whitespace = "\n" . ($iString x $level);
         if ($c eq '{') {
             $level++;
@@ -1296,7 +1208,7 @@ sub indentJson {
             if ($lastChar eq "}") { $buf .= $whitespace; }
         }
         elsif ($c eq '"' && $lastChar eq "," &&
-               substr($s,$i) !~ m/^"Value"/) {
+               substr($s, $i) !~ m/^"Value"/) {
             $buf .= "$iString$c";
         }
         else {
@@ -1463,8 +1375,8 @@ sub lpadc { # pad, and also insert commas every three digits.
 
     my $buf = "";
     while (length($s) > 3) {
-        $buf = $sepChar . substr($s,length($s)-3) . $buf;
-        $s = substr($s,0,length($s)-3);
+        $buf = $sepChar . substr($s, length($s)-3) . $buf;
+        $s = substr($s, 0, length($s)-3);
     }
     $buf = "$s$buf";
     my $needed = $len - length($buf);
@@ -1582,7 +1494,7 @@ sub getUTF8 {
     my $utf8 = Encode::encode('utf8', chr($n));
     my $ux = ();
     for (my $i=0; $i<length($utf8); $i++) {
-        $ux .= sprintf("%s%02x", $sep, ord(substr($utf8,$i,1)));
+        $ux .= sprintf("%s%02x", $sep, ord(substr($utf8, $i, 1)));
     }
     return($ux);
 }
@@ -1712,7 +1624,7 @@ sub showInvisibles {
     my ($s, $mode, $spaceAs, $lfAs) = @_;
     (defined $s) || return("");
     $s =~ s/(\P{IsASCII}|\p{IsCntrl}| )/{
-        makePrintable($1,$mode,$spaceAs,$lfAs); }/ges;
+        makePrintable($1, $mode, $spaceAs, $lfAs); }/ges;
     return($s);
 }
 
@@ -1744,12 +1656,12 @@ sub escapeXML {
     return(escapeXmlContent(@_));
 }
 sub escapeXmlContent {
-    my ($s,$asciiOnly) = @_;
+    my ($s, $asciiOnly) = @_;
     (defined $s) || return("");
-    return(escapeXml($s,$asciiOnly));
+    return(escapeXml($s, $asciiOnly));
 }
 sub escapeXml {
-    my ($s,$asciiOnly) = @_;
+    my ($s, $asciiOnly) = @_;
     (defined $s) || return("");
     # We quietly delete the non-XML control characters!
     $s =~ s/[\x{0}-\x{8}\x{b}\x{c}\x{e}-\x{1f}]//g;
@@ -1766,7 +1678,7 @@ sub escapeXMLAttribute {
     return(escapeXmlAttribute(@_));
 }
 sub escapeXmlAttribute {
-    my ($s,$apostrophes,$asciiOnly) = @_;
+    my ($s, $apostrophes, $asciiOnly) = @_;
     (defined $s) || return("");
     # We quietly delete the non-XML control characters!
     $s =~ s/[\x{0}-\x{8}\x{b}\x{c}\x{e}-\x{1f}]//g;
@@ -1788,7 +1700,7 @@ sub escapeXMLPi {
     return(escapeXmlPi(@_));
 }
 sub escapeXmlPi {
-    my ($s,$asciiOnly) = @_;
+    my ($s, $asciiOnly) = @_;
     (defined $s) || return("");
     # We quietly delete the non-XML control characters!
     $s =~ s/[\x{0}-\x{8}\x{b}\x{c}\x{e}-\x{1f}]//g;
@@ -1804,7 +1716,7 @@ sub escapeXMLComment {
     return(escapeXmlComment(@_));
 }
 sub escapeXmlComment {
-    my ($s,$asciiOnly) = @_;
+    my ($s, $asciiOnly) = @_;
     (defined $s) || return("");
     # We quietly delete the non-XML control characters!
     $s =~ s/[\x{0}-\x{8}\x{b}\x{c}\x{e}-\x{1f}]//g;
@@ -1840,12 +1752,12 @@ sub expandXml {
 sub mapEntity {
     my ($e, $myHashRef) = @_;
     (defined $e) || return("");
-    if (substr($e,0,1) eq '#') {                       # Numeric char ref
-        if (lc(substr($e,1,1)) eq 'x') {               # Hexadecimal
-            return(chr(hex("0".substr($e,1))));
+    if (substr($e, 0, 1) eq '#') {                       # Numeric char ref
+        if (lc(substr($e, 1, 1)) eq 'x') {               # Hexadecimal
+            return(chr(hex("0".substr($e, 1))));
         }
         else {                                         # Decimal
-            return(chr(substr($e,1)));
+            return(chr(substr($e, 1)));
         }
     }
     elsif ($e eq "lt")   { return("<"); }              # XML built-ins
@@ -1905,7 +1817,7 @@ sub escapeURI {
     (defined $s) || return("");
     $s =~ s/([^-!\$'()*+.0-9:;=?\@A-Z_a-z])/{
         if (ord($1) < 256) {
-            sprintf("%02x",ord($1));
+            sprintf("%02x", ord($1));
         }
         else {
             getUTF8(ord($1));
@@ -1940,7 +1852,7 @@ sub unescapeURI {
 sub isoTime {
     my ($s) = @_;
     if (!$s) { $s = time(); }
-    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) =
+    my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst) =
         localtime($s);
     return(sprintf("%04d-%02d-%02dT%02d:%02d:%02d",
                    $year+1900, $mon+1, $mday, $hour, $min, $sec));
@@ -1948,7 +1860,7 @@ sub isoTime {
 
 sub isoDate {
     my ($s) = @_;
-    return(substr(isoTime($s),0,10));
+    return(substr(isoTime($s), 0, 10));
 }
 
 sub elapsedTime {
@@ -1959,7 +1871,7 @@ sub elapsedTime {
     my $h = int($elapsed / 3600);
     my $m = int($elapsed / 60) % 60;
     my $s = $elapsed % 60;
-    return(sprintf("%02d:%02d:%02d",$h,$m,$s));
+    return(sprintf("%02d:%02d:%02d", $h, $m, $s));
 }
 
 # Should vary it if it needs to be repeated.

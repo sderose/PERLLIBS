@@ -1,6 +1,6 @@
 #!/usr/bin/env perl -w
 #
-# ColorManager: Unified handling of ANSI color.
+# ColorManager: Unified handling of ANSI terminal color.
 #
 use strict;
 
@@ -8,66 +8,76 @@ package ColorManager;
 
 our %metadata = (
     'title'        => "ColorManager.pm",
+    'description'  => "Unified handling of ANSI terminal color.",
     'rightsHolder' => "Steven J. DeRose",
     'creator'      => "http://viaf.org/viaf/50334488",
     'type'         => "http://purl.org/dc/dcmitype/Software",
-    'language'     => "Perl 5",
+    'language'     => "Perl 5 (Python version also available)",
     'created'      => "2011-03-25",
-    'modified'     => "2020-02-18",
+    'modified'     => "2022-12-20",
     'publisher'    => "http://github.com/sderose",
     'license'      => "https://creativecommons.org/licenses/by-sa/3.0/"
 );
 our $VERSION_DATE = $metadata{'modified'};
-
+my $me = "ColorManager.pm";
 
 =pod
 
 =head1 Usage
 
-This Perl package (a Python version is also available)
-provides easier access to ANSI terminal colors. The 8 basic
+This Perl package provides easier access to ANSI terminal colors. The 8 basic
 colors work for foreground and background in nearly all terminal programs.
-This package also supports a variety of effects such as bold, underline,
+This package also supports effects such as bold, underline,
 blink, italic, and so on, but exactly which ones work varies quite a bit
 from one terminal program to another.
 
-To display a string in bold red type on a white background, do:
+(a Python version of this package is also available)
+
+=head2 Usage from code
+
+To display a string in bold red type on a white background:
 
     use ColorManager;
     print ColorManager::colorize('red/white/bold', "a string");
 
-You can also request the exact escape sequence needed to get to a given
-color (or back to 'default'), like:
+To generate the literal escape sequence needed to get to a given
+color (color name "default" gets back to the terminal's default colors):
 
-    getColorString("blue")
+    my $escapeSequence = ColorManager::getColorString("blue");
 
-As shown, the returns the appropriate string with a literal ESC (U+0001B) as
+This returns the appropriate string with a literal ESC (U+0001B) as
 the first character. You can also get strings with "\\e" or other forms,
-since you might want those to paste into C<bash> scripts, etc.
+to paste into C<shell> scripts or prompts, etc.
 
-To install this and make
-sure Perl can find it via the C<@INC> directory-list, add the path to
-environment variable C<PERL5LIB> --
-see L<here|"http://stackoverflow.com/questions/2526804">.
+B<Note>: If using this via C<sjdUtils.pm> (q.v.),
+be sure to call I<setColors(1)> and I<setVerbose(n)> to enable it.
 
-B<Note>: If you're using this via C<sjdUtils.pm>,
-then unless you call I<setColors(1)> and I<setVerbose(n)> to enable it,
-you might not get the output you want.
+=head2 Usage from the command line
 
-If run directly (rather than used as a library), a small self-test happens,
-or you can show a particular color with I<--color colorName> and/or I<--showAll>.
+If run with no arguments a self-test happens.
 
+With I<--color colorName>, a sample of that color is shown.
+
+With I<--effects>, a sample of each effect is shown (we have
+thousands of terminal programs, but only a few of them know them all).
+
+With I<--showAll>, all the known color combinations are displayed.
 
 =head2 Color Names
 
-The color names available are described in L<https://github.com/sderose/Color/colorNames.md>,
-which supercedes anything in specific scripts (they I<should> match).
+The color names available are described in
+L<https://github.com/sderose/Color/colorNames.md>, and are generally
+foreground/background/effect.
+For example, "red/blue/bold" specifies bold red on a blue background,
+while "green" specifies green foreground.
 
-For example, "green" specifies green foreground (type),
-while "red/blue/bold" specifies bold red on a blue background
+Color and effect names disregard case.
+
+If the environment variable C<NOBLINK> is set, the "blink" and "fblink"
+effects will not be used even if requested.
 
 
-=head2 General color methods
+=head1 General color methods
 
 =over
 
@@ -121,18 +131,13 @@ If color is enabled, then surround I<message> with ANSI color escapes for
 the specified named color. If I<endAs> is specified, it is used as a
 L<Color Name> to switch to at the end of the I<message> (instead of "off").
 
-=item * B<colorize>I<(colorName, message)>
-
-Return the string I<message>, but with the escapes to put it in the specified
-I<colorName>. If I<colorName> is unknown, I<message> is returned unchanged.
 If the last character of I<message> is a newline, then the color will be
-turned off I<before> rather than after the newline itself, so Perl won't
-complain if you pass the result to C<warn>.
+turned off (or set to the I<endAs> value) I<before> rather than after
+the newline itself, in case you pass the result to C<warn>.
 
-The list of supported colors, effects, and combinations is in section
-L<Colors|"Colors"> (above).
+For the supported colors, effects, and combinations see above or L<colorNames.md>.
 
-B<Note>: The ANSI escape sequence to switch to a given color, is
+The ANSI escape sequence to switch to a given color is
 available via C<sjdUtils::getColorString(name)>.
 
 =item * B<colorizeXmlTags>I<(s, defaultColorName, tagMap?)>
@@ -168,17 +173,40 @@ This is just shorthand for C<len(uncolorize(s))>.
 
 =item * B<--color> I<colorName>
 
+Show a small sample of the specified color.
+
 =item * B<--effects>
+
+Show a sample of each potential effect.
 
 =item * B<--showAll>
 
-Return the length of I<s>, but ignoring any ANSI terminal color strings.
-This is just shorthand for C<len(uncolorize(s))>.
+Show a sample of each of the many color combinations (sorted by name).
+
 
 =back
 
 
 =head1 Known bugs and limitations
+
+There should be an option to generate the form needed in C<zsh> prompt
+strings.
+
+
+=head1 To do
+
+=over
+
+=item * Sync with Python version (add --colorize, --uncolorize, --bold, --pack).
+
+=item * Get rid of rest of refs to %colorStrings. Create escapes on the
+fly from tokens rather than keeping a big list at all.
+
+=item * Remove or finish 256-color stuff.
+
+=item * Finish different color-sets for dark vs. light bg.
+
+=back
 
 
 =head1 Related commands
@@ -211,23 +239,10 @@ Sync color w/ python, logging....
 
 =item * 2019-11-16: Improve driver. strict.
 
-=item * 2020-02-18 Clean up. Sync color syntax with doc. Fix --color demo.
+=item * 2020-02-18: Clean up. Sync color syntax with doc. Fix --color demo.
 
-=back
-
-
-=head1 To do
-
-=over
-
-=item * Sync ColorManager API with Python version.
-
-=item * Get rid of rest of refs to %colorStrings. Maybe create escapes on the
-fly from tokens rather than keeping a big list at all.
-
-=item * Remove or finish 256-color stuff.
-
-=item * Finish different color-sets for dark vs. light bg.
+=item * 2022-12-20: Sync more closely with Python version.
+Move in colorizeXmlTags() and colorizeXmlContent() from sjdUtils.pm.
 
 =back
 
@@ -243,6 +258,7 @@ L<https://github.com/sderose>.
 
 =cut
 
+
 ###############################################################################
 # Color management in general
 #
@@ -251,7 +267,7 @@ L<https://github.com/sderose>.
 my $verbose = 0;
 my $ENABLED = 1;
 
-my $newColorMethod = 1;
+my $newColorMethod = 1;  # TODO ???
 
 our %colorNumbers = (
     "black"   => 0,
@@ -351,10 +367,10 @@ sub fillColorHash {
 
         for my $e (keys %effectNumbers) {    # fgcolor + effect
             my $en = $effectNumbers{$e};
-            $theHash->{"$e/$c"}   = sprintf($fmt2, $eb,$en,30+$cn);
-            $theHash->{"$e//$c"}  = sprintf($fmt2, $eb,$en,40+$cn);
-            $theHash->{"!$e/$c"}  = sprintf($fmt2, $eb,20+$en,30+$cn);
-            $theHash->{"!$e//$c"} = sprintf($fmt2, $eb,20+$en,40+$cn);
+            $theHash->{"$e/$c"}   = sprintf($fmt2, $eb, $en, 30+$cn);
+            $theHash->{"$e//$c"}  = sprintf($fmt2, $eb, $en, 40+$cn);
+            $theHash->{"!$e/$c"}  = sprintf($fmt2, $eb, 20+$en, 30+$cn);
+            $theHash->{"!$e//$c"} = sprintf($fmt2, $eb, 20+$en, 40+$cn);
         }
 
         for my $c2 (keys %colorNumbers) {    # fgcolor + bgcolor
@@ -372,6 +388,7 @@ sub fillColorHash {
 
 sub isColorName {
     my ($name) = @_;
+    $name = lc($name);
     if (!$newColorMethod) {
         return((defined $colorStrings{$name}) ? 1:0);
     }
@@ -380,18 +397,25 @@ sub isColorName {
     }
 }
 
+# Look up or construct the escape string, given a compound color name
+# such as "red/white/bold".
+#
 sub getColorString {
     my ($name, $theEscape) = @_;
+    $name = lc($name);
     if (!defined $theEscape) {
         $theEscape = "\e";
     }
-    #warn "ESC is " . ord($theEscape) . "\n";
     my $s = "";
     if ($name eq "off" || $name eq "default") {
         return $theEscape . "[0m";
     }
 
     if (!$newColorMethod) {            # From big static table
+        if (!defined $colorStrings{$name}) {
+            warn "$me.getColorString: Color name '$name' not recognized.\n";
+            return "";
+        }
         my $cstr = $theEscape . '[' . $colorStrings{$name} . 'm';
         print("cstr is ###" . sjdUtils::showInvisibles($cstr) . "###\n");
         return $cstr;
@@ -399,44 +423,57 @@ sub getColorString {
 
     # Parse on the fly
     my @tokens = split(/\s*\/\s*/, $name);
-    #($verbose) && warn "Color names tokens from '$name': [ '" . join("', '", @tokens) . "' ]\n";
+    ($verbose) && warn "$me.getColorString: Color name tokens from '$name': [ '"
+        . join("', '", @tokens) . "' ]\n";
 
     # Sort out which token is which (this allows flexible order, though that's
     # not specified by colorName.pod). It also allows extra slashes.
     my $fg = my $bg = my $eff = "";
     my $neg = 0;
     for my $token (@tokens) {
-        my $neg = (substr($token,0,1) eq '!') ? 1:0; # Use 20 to negate effects
-        if ($neg) { $token = substr($token,1); }
+        my $neg = (substr($token, 0, 1) eq '!') ? 1:0; # Use 20 to negate effects
+        if ($neg) { $token = substr($token, 1); }
         if ($token eq "") { next; }
         if (defined $colorNumbers{$token}) {
             if ($fg eq "") { $fg = $token; }
             elsif ($bg eq "") { $bg = $token; }
-            else { warn("Too many color tokens in '$name'.\n"); }
+            else { warn("$me.getColorString: Too many color tokens in '$name'.\n"); }
         }
         elsif (defined $effectNumbers{$token}) {
             if ($eff eq "") { $eff = $token; }
-            else { warn("Too many effects tokens in '$name'.\n"); }
+            else { warn("$me.getColorString: Too many effects tokens in '$name'.\n"); }
         }
         else {
-            warn("Bad token '$token' in color name '$name'.\n");
+            warn("$me.getColorString: Bad token '$token' in color name '$name'.\n");
         }
     } # for $token
 
     # Now construct the right escape string
+    return $theEscape . getColorStringFromArgs($fg, $bg, $eff);
+} # getColorString
+
+# Construct the actual code, NOT INCLUDING THE ESCAPE.
+#
+sub getColorStringFromArgs {
+    my ($fg, $bg, $eff) = @_;
+    $fg = lc($fg);
+    $bg = lc($bg);
+    $eff = lc($eff);
     my $theCode = "[";
     if ($fg) { $theCode .= (30 + $colorNumbers{$fg}) . ';'; }
     if ($bg) { $theCode .= (40 + $colorNumbers{$bg}) . ';'; }
     if ($eff) {
-        if ($neg) { $theCode .= $effectNumbers{$eff} . ';'; }
-        else { $theCode .= $effectNumbers{$eff} . ';'; }
+        if (substr($eff, 0, 1) eq "!") {
+            $theCode .= $effectOffNumbers{substr($eff, 1)} . ';';
+        }
+        else {
+            $theCode .= $effectNumbers{$eff} . ';';
+        }
     }
     if (substr($theCode, -1) eq ';') { chop $theCode; }
     $theCode .= 'm';
-    #($verbose) && print("Got '$name' --> ESC + '$theCode': word \e$s WORD \e[0m word.\n");
-    #($verbose) && print("word \e[31m word \e[0m word\n");
-    return $theEscape . $theCode;
-} # getColorString
+    return $theCode;
+}
 
 sub getColorHash {
     my ($doEffect) = @_;
@@ -471,7 +508,7 @@ sub getColorHash {
 }
 
 sub dumpColors {
-    warn("\nDumping color defs:\n");
+    warn("$me: \nDumping color definitions:\n");
     my $foo = getColorHash();
     for my $k (sort keys %$foo) {
         warn("    " . colorize($k, $k) . ".\n");
@@ -480,26 +517,59 @@ sub dumpColors {
 
 sub addColorName {
     my ($newName, $oldName) = @_;
+    warn "addColorName is deprecated.\n";
     if (!$newColorMethod) {
         $colorStrings{$newName} = $colorStrings{$oldName};
     }
     else {
-        warn("addColorName no longer supported.");
+        warn("$me: addColorName no longer supported.");
     }
 }
 
 sub colorize {
-    my ($colorName, $msg, $endAs) = @_;
+    my ($name, $msg, $endAs) = @_;
+    $name = lc($name);
     if (!$ENABLED) {
         return('*' . $msg . '*');
     }
     if (!$endAs) { $endAs = "off"; }
-    my $cs1 = getColorString($colorName);
+    my $cs1 = getColorString($name);
     my $cs2 = getColorString($endAs);
     if (!$cs1 || !$cs2) { return('*' . $msg . '*');
     }
     return($cs1 . $msg . $cs2);
 }
+
+# Can pass a tag-name to color-name hash as 3rd argument, to be fancy.
+#
+sub colorizeXmlTags {
+    my ($s, $defaultColorName, $colorMapRef) = @_;
+    setColors(1);
+    alogging::setLogColors(1);
+    my $on = getColorString($defaultColorName);
+    my $off = ($on) ? getColorString("off") : "";
+
+    if (!$colorMapRef) {
+        $s =~ s/(<.*?>)/$on$1$off/g;
+    }
+    else {
+        $s =~ s/(<\/?)([-_.:\w\d]+)([^>]*>)/{
+            ((defined $colorMapRef->{$2}) ?
+                getColorString($colorMapRef->{$2}):$on) . $1 . $2 . $3 . $off }
+            /ge;
+    }
+    return($s);
+}
+
+sub colorizeXmlContent {
+    my ($s, $colorName) = @_;
+    setColors(1);
+    my $on = getColorString($colorName);
+    my $off = ($on) ? getColorString("off") : "";
+    $s =~ s/>(.*?)</>$on$1$off</g;
+    return($s);
+}
+
 
 # Remove any ANSI terminal color escapes from a string.
 #
@@ -509,11 +579,14 @@ sub uncolorize {
     my ($s) = @_;
     $s =~ s^$colorRegex^^g;
     if (index($s, chr(27)) >= 0) {
-        warn("uncolorize: left some escape(s) in $s.");
+        warn("$me: uncolorize: left some escape(s) in $s.");
     }
     return $s;
 }
 
+# Return the length of I<s>, but ignoring any ANSI terminal color strings.
+# This is just shorthand for C<len(uncolorize(s))>.
+#
 sub uncoloredLen {
     my ($s) = @_;
     return leng(ColorManager::uncolorize($s));
@@ -603,7 +676,7 @@ if (!caller) {
 
     ($result) || die "Bad options.\n";
 
-    print("\nTesting ColorManager.pm...\n");
+    ($quiet) || print("\nTesting ColorManager.pm...\n");
     setColors(1);
 
     my @toShow = ();
@@ -612,28 +685,29 @@ if (!caller) {
             $colorToShow, colorize($colorToShow, "Some text")));
         exit;
     }
-
-    for my $b (@toShow) {
-        my $name1 = $b;
-        my $name2 = "white/$b";
-        my $name3 = "$b/bold";
-        my $name4 = "$b/white";
-        warn (sprintf("## %s ## %s ## %s ## %s ##\n",
-            colorize($name1, sprintf("%-14s", $name1)),
-            colorize($name2, sprintf("%-14s", $name2)),
-            colorize($name3, sprintf("%-14s", $name3)),
-            colorize($name4, sprintf("%-14s", $name4))
-        ));
+    elsif ($showAll) {
+        dumpColors();
     }
-
-    if ($effects) {
+    elsif ($effects) {
         for my $b (sort keys %effectNumbers) {
-            my $name1 = "$b/white/red";
+            my $name1 = "white/red/$b";
             warn (sprintf("\nEffect %-12s  ## %s ##\n", $b,
             colorize($name1, sprintf("%-14s", $name1))));
         }
     }
-
-    if ($showAll) { dumpColors(); }
+    else {
+        for my $b (@toShow) {
+            my $name1 = $b;
+            my $name2 = "white/$b";
+            my $name3 = "$b/bold";
+            my $name4 = "$b/white";
+            warn (sprintf("## %s ## %s ## %s ## %s ##\n",
+                colorize($name1, sprintf("%-14s", $name1)),
+                colorize($name2, sprintf("%-14s", $name2)),
+                colorize($name3, sprintf("%-14s", $name3)),
+                colorize($name4, sprintf("%-14s", $name4))
+            ));
+        }
+    }
 }
 1;

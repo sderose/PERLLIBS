@@ -2,7 +2,7 @@
 #
 # SimplifyUnicode.pm: Remove some Unicode complexities.
 # 2010-11-19ff: Written by Steven J. DeRose.
-# 
+#
 use strict;
 use Getopt::Long;
 use Unicode::Normalize;
@@ -31,7 +31,7 @@ Maps many classes of Unicode characters to more basic ones.
 Example:
   use SimplifyUnicode;
   my $su = new SimplifyUnicode();
-  $su->setOptions("dashes",1);
+  $su->setOptions("dashes", 1);
   $myString = $su->simplify($myString);
 
 
@@ -214,7 +214,7 @@ sub simplify {
     #    $rec = $self->handle_UriEscapes($rec);
     #}
     if ($self->{options}->{compatibility} ne "keep") {
-        $rec = decompose($rec,1);
+        $rec = decompose($rec, 1);
     }
 
     if ($self->{options}->{accent} ne "keep") {
@@ -258,7 +258,7 @@ sub simplify {
 ###############################################################################
 #
 sub setOption {
-    my ($self,$oname,$value) = @_;
+    my ($self, $oname, $value) = @_;
 
     # Check whether option name is actually valid.
     if (!defined $self->{options}->{$oname}) {
@@ -274,10 +274,10 @@ sub setOption {
     # Check value for the non-Boolean ones
     ($self->{options}->{accent} =~
      m/^(composed|keep|decomposed|strip|space|delete)$/) ||
-     warn "Bad value for simplifyUicode.setOption($oname,$value).\n";
+     warn "Bad value for simplifyUicode.setOption($oname, $value).\n";
     ($self->{options}->{ligatures} =~
      m/^(composed|keep|decomposed|strip|space|delete)$/) ||
-     warn "Bad value for simplifyUicode.setOption($oname,$value).\n";
+     warn "Bad value for simplifyUicode.setOption($oname, $value).\n";
 } # setOption
 
 
@@ -365,10 +365,10 @@ sub handle_Ligatures {
 # Return basic ASCII letter if we got a math letter; else undef.
 #
 sub handle_Maths {
-    my ($self,$rec) = @_;
+    my ($self, $rec) = @_;
     my $buf = "";
     for (my $i=0; $i<lenght($rec); $i++) {
-        my $c = substr($rec,$i,1);
+        my $c = substr($rec, $i, 1);
         if (my $letter = math2letter(ord($c))) {
             $buf .= $letter;
         }
@@ -380,7 +380,7 @@ sub handle_Maths {
 }
 
 sub math2letter {
-    my ($self,$n) = @_;
+    my ($self, $n) = @_;
     my $mathStartsRef = $self->{mathStarts};
     my %ms = %$mathStartsRef;
     for my $mathRange (keys %ms) {
@@ -388,10 +388,10 @@ sub math2letter {
         next unless ($n>=0 && $n<26);
         my $type = $ms{$mathRange};
         if ($type eq "UPPER") {
-            return(substr("ABCDEFGHIJKLMNOPQRSTUVWXYZ",$diff,1));
+            return(substr("ABCDEFGHIJKLMNOPQRSTUVWXYZ", $diff, 1));
         }
         elsif ($type eq "LOWER") {
-            return(substr("abcdefghijklmnopqrstuvwxyz",$diff,1));
+            return(substr("abcdefghijklmnopqrstuvwxyz", $diff, 1));
         }
         else {
             warn "Bad math alphabet type '$type'.\n";
@@ -505,7 +505,6 @@ sub setupMaths {
     return(\%mathAlphabetStarts);
 }
 
-# End of SimplifyUnicodePackage
-
-1;
-
+if (!caller) {
+    system "perldoc $0";
+}

@@ -118,7 +118,7 @@ are html/body/div/p/footnote/, and you attempt to open another C<p>, then
 the I<footnote> and I<p> elements will be automatically closed before
 the new C<p> is opened.
 
-=item * B<setSpace(types,n)>
+=item * B<setSpace(types, n)>
 
 Cause I<n> extra newlines to be issued before the start of each instance
 of any element type listed (space-separated) in I<types>.
@@ -796,7 +796,7 @@ sub closeElement {
     }
     if (scalar keys %{$self->{queuedAttributes}}) {
         warn "closeElement: Should not be these queued attributes: '" .
-            join(", ",sort(keys(%{$self->{queuedAttributes}}))) . "'.\n";
+            join(", ", sort(keys(%{$self->{queuedAttributes}}))) . "'.\n";
         $self->clearQueuedAttributes();
     }
     my $out = "</$gi>";
@@ -826,7 +826,7 @@ sub getCurrentDepth {
 }
 sub howManyAreOpen {
     my ($self, $giList) = @_;
-    my @giList = split(/\s+/,$giList);
+    my @giList = split(/\s+/, $giList);
     my $nOpen = 0;
     for (my $i=0; $i<$self->getDepth(); $i++) {
         for (my $j=0; $j<scalar @giList; $j++) {
@@ -973,7 +973,7 @@ sub getIndentString {
 }
 sub setIndentString { # Compatibility w/ ElementManager.pm.
     my ($self, $s) = @_;
-    $self->setOption("iString",$s);
+    $self->setOption("iString", $s);
 }
 sub getCurrentIndent {
     my ($self, $newline, $offset) = @_;
@@ -1023,7 +1023,7 @@ sub setCantRecurse {
 }
 
 sub setSuppress {
-    my ($self,$enames) = @_;
+    my ($self, $enames) = @_;
     for my $e (split(/\s+/, $enames)) {
         $self->{suppressed}->{$e}++;
     }
@@ -1128,7 +1128,7 @@ sub closeThroughElement {
 #
 sub closeAllOfThese {
     my ($self, $giList) = @_;
-    my @giList = split(/\s+/,$giList);
+    my @giList = split(/\s+/, $giList);
     while ($self->howManyAreOpen($giList)>0) {
         $self->closeElement();
     }
@@ -1198,7 +1198,7 @@ sub makePI {
 sub makeCharRef {
     my ($self, $text) = @_;
     if ($text =~ m/^\d+$/) {
-        $self->makeRawText(sprintf($self->{options}->{entityFormat},$text));
+        $self->makeRawText(sprintf($self->{options}->{entityFormat}, $text));
     }
     else {
         $self->makeRawText("&$text;");
@@ -1240,7 +1240,7 @@ sub makeRawText {
 sub fixName {
     my ($self, $name) = @_;
     $name =~ s/[^-:_\w\d.]/_/g;
-    if ($name eq "" or index("0123456789.-_:",substr($name,0,1))>=0) {
+    if ($name eq "" or index("0123456789.-_:", substr($name, 0, 1)) >= 0) {
         $name = "A.$name";
     }
     return($name);
@@ -1267,7 +1267,7 @@ sub escapeXmlContent {
     $s =~ s/</&lt;/g;
     $s =~ s/]]>/]]&gt;/g;
     if ($self->{options}->{asciiOnly}) {
-        $s =~ s/(\P{IsASCII})/ { sprintf($self->{options}->{entityFormat},ord($1)); }/ge;
+        $s =~ s/(\P{IsASCII})/ { sprintf($self->{options}->{entityFormat}, ord($1)); }/ge;
     }
     return $s;
 }
@@ -1277,7 +1277,7 @@ sub escapeUri {
     return($s) unless ($s =~ m/[^$self->{options}->{URIchars}]/);
     my $t = "";
     for (my $i=0; $i<length($s); $i++) {
-       my $c = substr($s,$i,1);
+       my $c = substr($s, $i, 1);
        my $o = ord($c);
        if (($self->{options}->{iri} && $o > 127) ||
            $c =~ m/[$self->{options}->{URIchars}]/) { # Ok URI char
@@ -1287,14 +1287,14 @@ sub escapeUri {
            warn "XmlOutput.escapeURI: Non-ASCII chars, IRI not set.\n";
        }
        else {
-           $t .= sprintf("%%%02x",ord($c));
+           $t .= sprintf("%%%02x", ord($c));
        }
     }
     return($t);
 }
 
 sub escapeXmlAttribute {
-    my ($self,$s) = @_;
+    my ($self, $s) = @_;
     ($s) || return("");
     if ($self->{options}->{escapeUris} && $s =~ m/^($schemes):\/\//) {
         $s = $self->escapeUri($s);
@@ -1311,9 +1311,9 @@ sub escapeXmlAttribute {
 }
 
 sub escapeAscii {
-    my ($self,$s) = @_;
+    my ($self, $s) = @_;
     ($s) || return("");
-    $s =~ s/(\P{IsASCII})/ { sprintf("&#x%04x;",ord($1)); }/ge;
+    $s =~ s/(\P{IsASCII})/ { sprintf("&#x%04x;", ord($1)); }/ge;
     #$s = xmlEscape($s);
     return($s);
 }
@@ -1323,4 +1323,6 @@ sub sysgen {
     return($self->{sysgenPrefix} . $self->{sysgenCounter}++);
 }
 
-1;
+if (!caller) {
+    system "perldoc $0";
+}
