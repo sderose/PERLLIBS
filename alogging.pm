@@ -515,7 +515,7 @@ sub dumpOptions {
 #
 sub defineMsgTypes {
     # Try to figure out what the background color is
-    my $bgType = "light";
+    my $bgType = "dark";
     if ($ENV{TERM_BG}) {
         if ($ENV{TERM_BG} =~ m/(black|blue|red|magenta)/) {
             $bgType = "dark";
@@ -529,7 +529,7 @@ sub defineMsgTypes {
 
     if ($bgType eq "light") {
         #             type  color       nLevels prefix   infix suffix escape indent
-        defineMsgType("v", "blue/white",      0, "",           "",  "",    0,  1);
+        defineMsgType("v", "blue/black",      0, "",           "",  "",    0,  1);
         defineMsgType("e", "red/white",       0, "ERROR: ",    "",  "",    1,  1);
         defineMsgType("h", "magenta/white",   0, "\n******* ", "",  "",    0,  1);
         defineMsgType("x", "blue/white",      0, "",           "",  "",    0,  1);
