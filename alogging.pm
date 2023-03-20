@@ -216,12 +216,12 @@ value (if any) or the default value (if the message type is new) is used.
 
 The predefined I<msgType> options are:
 
-     C<v> (verbose) is C<blue>, indented.
-     C<h> (heading) is C<magenta>, prefix "\n******* ", unindented.
-     C<e> (error) is C<red>, 3 levels of stack trace, prefix "ERROR: ".
+     C<v> (verbose) is C<blue/white>, indented.
+     C<h> (heading) is C<magenta/white>, prefix "\n******* ", unindented.
+     C<e> (error) is C<red/white>, 3 levels of stack trace, prefix "ERROR: ".
 
 I<msgType> C<x> is special. It determines what color is used by
-I<colorizeXmlTags>() and  I<colorizeXmlContent>(). Default: C<blue>.
+I<colorizeXmlTags>() and  I<colorizeXmlContent>(). Default: C<blue/white>.
 
 
 =item * B<eMsg>I<(rank, message1, message2)> or B<eWarn>
@@ -535,10 +535,10 @@ sub defineMsgTypes {
         defineMsgType("x", "blue/white",      0, "",           "",  "",    0,  1);
     }
     else {
-        defineMsgType("v", "/blue",   0, "",           "",  "",    0,  1);
-        defineMsgType("e", "/red",    0, "ERROR: ",    "",  "",    1,  1);
-        defineMsgType("h", "/magenta",0, "\n******* ", "",  "",    0,  1);
-        defineMsgType("x", "/blue",   0, "",           "",  "",    0,  1);
+        defineMsgType("v", "blue/white",   0, "",           "",  "",    0,  1);
+        defineMsgType("e", "red/white",    0, "ERROR: ",    "",  "",    1,  1);
+        defineMsgType("h", "magenta/white",0, "\n******* ", "",  "",    0,  1);
+        defineMsgType("x", "blue/white",   0, "",           "",  "",    0,  1);
     }
     $logInfo{"msgTypesDefined"} = 1;
 } # defineMsgTypes
