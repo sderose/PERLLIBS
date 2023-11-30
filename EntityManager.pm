@@ -137,8 +137,9 @@ By default, only the current working directory is searched.
 
 =item * B<addCatalog>(path)
 
-Add the file at I<path> to the list of open XML entity-resolution catalogs.
-See L<http://www.oasis-open.org/committees/entity/specs/cs-entity-xml-catalogs-1.0.html> for the implementation used,
+Add the file at I<path> to the list of open XML entity-resolution catalogs. See
+L<http://www.oasis-open.org/committees/entity/specs/cs-entity-xml-catalogs-1.0.html>
+for the implementation used,
 and L<http://search.cpan.org/~ebohlman/XML-Catalog-0.02/Catalog.pm>
 for a more current Catalog format specification.
 For example:
