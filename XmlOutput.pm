@@ -695,11 +695,11 @@ sub new {
     }; # self
 
     if ($oFH) {
-        binmode($oFH,"utf8");
+        binmode($oFH, ":encoding(utf8)");
     }
     else {
         print "";
-        binmode(STDOUT,"utf8");
+        binmode(STDOUT, ":encoding(utf8)");
     }
     bless $self, $class;
     return($self);

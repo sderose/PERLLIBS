@@ -307,7 +307,7 @@ sub open {
         $encoding = "";
     }
     else {
-        $self->binmode($encoding);
+        $self->binmode();
     }
     $self->{path} = $path;
     $self->{hasAnyDataBeenSupplied} = 1;
