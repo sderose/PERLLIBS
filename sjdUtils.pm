@@ -63,7 +63,7 @@ Returns C<undef> if you try to get an unknown option.
 =item * B<setUtilsOption>I<(name, value)>
 
 Set option I<name>, from the list below, to I<value>.
-A warning will be printed if you try to set an unknown option.
+A warning is printed if you try to set an unknown option.
 
 =over
 
@@ -156,7 +156,7 @@ the specified named color. If I<endAs> is specified, it is used as a
 color name to switch to at the end of the I<message> (instead of "off").
 
 If I<colorName> is unknown, I<message> is returned unchanged.
-If the last character of I<message> is a newline, then the color will be
+If the last character of I<message> is a newline, then the color is
 turned off I<before> rather than after the newline itself, so Perl won't
 complain if you pass the result to C<warn>.
 
@@ -201,7 +201,7 @@ Deprecated in favor of vMsg with message starting with "====".
 Issue an informational message if the current setting for
 I<verbose> is greater than I<rank>. See I<setVerbose>.
 A newline is added after I<message2>.
-If I<MsgPush> has been called, the message will be indented appropriately.
+If I<MsgPush> has been called, the message is indented appropriately.
 
 =item * B<MsgPush>() or B<vPush>()
 
@@ -377,13 +377,13 @@ What happens with Titlecase Unicode chars is not yet defined.
 Applies sentence-case to the string
 I<s>: capitalize the first letter.
 If I<forceRest> is present and true, all I<other> characters in I<s>
-will be forced to lower case.
+are forced to lower case.
 
 =item * B<tc>I<(s, forceRest)>
 
 Title-cases the string I<s>: capitalize the first letter of each word.
 If I<forceRest> is present and true, all I<other> characters in each
-word will be forced to lower case.
+word are forced to lower case.
 
 =item * B<ssubstr>I<(s, start, len)>
 

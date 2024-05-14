@@ -115,7 +115,7 @@ Prevent any element type listed (space-separated) in I<types>
 from being opened recursively.
 For example, if you set this for C<p>, and the open elements
 are html/body/div/p/footnote/, and you attempt to open another C<p>, then
-the I<footnote> and I<p> elements will be automatically closed before
+the I<footnote> and I<p> elements are automatically closed before
 the new C<p> is opened.
 
 =item * B<setSpace(types, n)>
@@ -205,11 +205,11 @@ you open a new element, since it will use any queued attributes).
 =item * B<openElement(type, attrs, makeEmpty)>
 
 Open an instance of the specified element I<type>.
-If I<attrs> is specified, it will be added as a literal attribute string
+If I<attrs> is specified, it is added as a literal attribute string
 (for example, you could pass "id='x1' class=\"foo\"").
 If there are queued attributes (see I<queueAttribute>()), they will
 also be issued and then de-queued.
-If I<makeEmpty> is specified and true, the element will be an empty
+If I<makeEmpty> is specified and true, the element is an empty
 element (and thus will not remain open).
 
 =item * B<openMultiple(type1, type2,...)>
@@ -290,7 +290,7 @@ out to and including the I<n>th nested "div";
 automatically adding a I<class="level_X"> attribute to each;
 
 =item * if the I<divClass> option
-is set, its value will be used as the name of an attribute (default: C<class>)
+is set, its value is used as the name of an attribute (default: C<class>)
 on which to encode the level-number of the div.
 
 =back
@@ -340,7 +340,7 @@ See also I<--htmlEntities>.
 Output I<text> as XML content. It will have XML delimiters escaped as needed,
 unless you unset the I<escapeText> option.
 If you set the I<asciiOnly> option, all non-ASCII characters
-will be turned into character references.
+are turned into character references.
 
 =item * B<makeRawText(s)>
 
@@ -514,7 +514,7 @@ newlines.
 
 setSpaces() can be used to provide a hash of element type names, each with
 the specific number of newlines to be issued before it (the last of which,
-if any, will be followed by indentation space).
+if any, is followed by indentation space).
 
 There is presently no way to control indentation more specifically than
 per-element-type.
