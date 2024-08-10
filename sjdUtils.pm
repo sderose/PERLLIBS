@@ -16,7 +16,8 @@ use ColorManager;
 use alogging;
 
 our %metadata = (
-    'title'        => "sjdUtils.pm",
+    'title'        => "sjdUtils",
+    'description'  => "Small methods I use in lots of places.",
     'rightsHolder' => "Steven J. DeRose",
     'creator'      => "http://viaf.org/viaf/50334488",
     'type'         => "http://purl.org/dc/dcmitype/Software",

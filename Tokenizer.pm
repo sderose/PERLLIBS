@@ -840,7 +840,7 @@ my %knownTypes = (
 #
 my $u = "";
 my %ucc = (
-    #    Unicode catagory name     Unify   Abbrev   NumberOfChars
+    #    Unicode category name     Unify   Abbrev   NumberOfChars
     # LETTERS
     $u . "Letter"                => "A",   # "L",
     $u . "Cased_Letter"          => "A",   # "LC",
